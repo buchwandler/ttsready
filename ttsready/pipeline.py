@@ -56,7 +56,9 @@ def _split_oversized(text: str, *, max_chars: int | None, language: str) -> list
     return [part.strip() for part in parts if part.strip()]
 
 
-def _iter_section_inputs(document: Document, include_titles: bool) -> Iterable[tuple[str, int, bool, str]]:
+def _iter_section_inputs(
+    document: Document, include_titles: bool
+) -> Iterable[tuple[str, int, bool, str]]:
     for section in document.sections:
         if include_titles and section.title and section.title.strip():
             yield section.id, -1, True, section.title.strip()

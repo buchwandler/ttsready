@@ -43,7 +43,9 @@ def main(
     ] = None,
     language: Annotated[
         str | None,
-        typer.Option("--language", "-l", help="Spokenform language; metadata then 'en' if omitted."),
+        typer.Option(
+            "--language", "-l", help="Spokenform language; metadata then 'en' if omitted."
+        ),
     ] = None,
     max_paragraph_chars: Annotated[
         int | None,
