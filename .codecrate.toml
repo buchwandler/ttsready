@@ -1,0 +1,25 @@
+[codecrate]
+output = "context_ttsready.md"
+keep_docstrings = true
+dedupe = true
+metadata = false
+respect_gitignore = true
+exclude = ["*/.venv/*", "context_ttsready.*"]
+gitignore_allow = ["ttsready/_version.py"]
+include = [
+  "**/*.py",
+  "**/*.toml",
+  "**/*.md",
+  "**/*.json",
+  "**/*.txt",
+  "**/*.csv",
+  "**/*.tsv",
+  "**/*.yaml",
+  "**/*.yml",
+  "**/*.ssmd",
+  "LICENSE",
+]
+split_max_chars = 0
+layout = "full"
+profile = "portable-agent"
+emit_standalone_unpacker = true

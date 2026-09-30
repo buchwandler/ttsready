@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=80", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ttsready"
+dynamic = ["version"]
+description = "Prepare documents as TTS-ready text or SSMD."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "Holger Nahrstaedt" }]
+keywords = ["tts", "text-to-speech", "epub", "pdf", "ssmd", "spokenform"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Multimedia :: Sound/Audio :: Speech",
+  "Topic :: Text Processing :: General",
+]
+dependencies = [
+  "epub2text>=0.2.8,<1",
+  "phrasplit>=0.3.9,<1",
+  "spokenform>=0.4.5,<1",
+  "pypdf>=5,<7",
+  "ssmd>=0.9,<1",
+  "typer>=0.20,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "build>=1,<2",
+  "pytest>=8,<10",
+  "ruff>=0.16,<1",
+  "twine>=6,<7",
+]
+
+[project.scripts]
+ttsready = "ttsready.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/buchwandler/ttsready"
+Repository = "https://github.com/buchwandler/ttsready"
+Issues = "https://github.com/buchwandler/ttsready/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ttsready*"]
+
+[tool.setuptools.package-data]
+ttsready = ["py.typed"]
+
+[tool.setuptools_scm]
+version_file = "ttsready/_version.py"
+fallback_version = "0.1.0.dev0"
+parentdir_prefix_version = "ttsready-"
+local_scheme = "no-local-version"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
