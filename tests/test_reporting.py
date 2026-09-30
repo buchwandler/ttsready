@@ -11,6 +11,7 @@ from ttsready.reporting import (
     format_preflight,
     json_report,
     markdown_report,
+    render_report,
     report_format,
     validate_report_path,
     write_report,
@@ -127,9 +128,41 @@ def test_preflight_lists_exact_single_and_chapter_destinations(tmp_path: Path) -
         (OutputArtifact("s2", tmp_path / "chapters" / "002-chapter-2.txt", "txt"),),
     )
 
-    assert "Would write:\n  " + str(tmp_path / "book.txt") in format_preflight(
-        report, single_plan
-    )
+    assert "Would write:\n  " + str(tmp_path / "book.txt") in format_preflight(report, single_plan)
     assert str(tmp_path / "chapters" / "002-chapter-2.txt") in format_preflight(
         report, chapter_plan
     )
+
+
+def test_report_only_markdown_uses_prepared_preview_wording() -> None:
+    report = make_report()
+    report.output_files = 0
+    report.destinations = []
+
+    rendered = markdown_report(report)
+
+    assert "## Prepared text preview" in rendered
+    assert "- Files written: 0" in rendered
+    assert "- Preview format: txt" in rendered
+    assert "## Output" not in rendered
+
+
+def test_render_report_selects_markdown_or_json() -> None:
+    report = make_report()
+
+    assert render_report(report, "md").startswith("# ttsready report\n")
+    assert json.loads(render_report(report, "json"))["schema"] == "ttsready.report.v1"
+    with pytest.raises(ValueError, match="format"):
+        render_report(report, "txt")
+
+
+def test_write_report_accepts_explicit_format_without_suffix_and_rejects_conflict(
+    tmp_path: Path,
+) -> None:
+    report = make_report()
+    extensionless = tmp_path / "reports" / "report"
+    write_report(extensionless, report, format="json")
+
+    assert json.loads(extensionless.read_text(encoding="utf-8"))["schema"] == ("ttsready.report.v1")
+    with pytest.raises(ValueError, match="conflicts"):
+        write_report(tmp_path / "report.md", report, format="json")

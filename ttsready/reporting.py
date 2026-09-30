@@ -19,8 +19,13 @@ def report_format(path: Path) -> str:
     return suffix[1:]
 
 
-def validate_report_path(path: Path) -> None:
-    report_format(path)
+def validate_report_path(path: Path, *, format: str | None = None) -> None:
+    if format is None:
+        report_format(path)
+    elif format not in {"md", "json"}:
+        raise ValueError("Report format must be 'md' or 'json'")
+    elif path.suffix and report_format(path) != format:
+        raise ValueError(f"Report path suffix {path.suffix.lower()} conflicts with format {format}")
     if path.exists() and path.is_dir():
         raise ValueError(f"Report path is a directory: {path}")
     for parent in path.parents:
@@ -119,8 +124,7 @@ def markdown_report(report: ConversionReport) -> str:
     )
     lines.extend(["", "## Rules", "", "| Rule | Count |", "| --- | ---: |"])
     lines.extend(
-        f"| {_cell(rule)} | {count} |"
-        for rule, count in sorted(report.spokenform.rules.items())
+        f"| {_cell(rule)} | {count} |" for rule, count in sorted(report.spokenform.rules.items())
     )
     lines.extend(["", "## Recognition domains", "", "| Domain | Count |", "| --- | ---: |"])
     lines.extend(
@@ -164,15 +168,31 @@ def markdown_report(report: ConversionReport) -> str:
             f"- Added split parts: {report.added_split_parts}",
             f"- Maximum prepared paragraph characters: {report.max_prepared_paragraph_chars}",
             "",
-            "## Output",
-            "",
-            f"- Files: {report.output_files}",
-            f"- Characters: {report.output_chars}",
-            f"- Lines: {report.output_lines}",
-            "- Destinations:",
         ]
     )
-    lines.extend(f"  - `{_cell(destination)}`" for destination in report.destinations)
+    if report.output_files == 0 and not report.destinations:
+        lines.extend(
+            [
+                "## Prepared text preview",
+                "",
+                "- Files written: 0",
+                "- Preview format: txt",
+                f"- Characters: {report.output_chars}",
+                f"- Lines: {report.output_lines}",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "## Output",
+                "",
+                f"- Files: {report.output_files}",
+                f"- Characters: {report.output_chars}",
+                f"- Lines: {report.output_lines}",
+                "- Destinations:",
+            ]
+        )
+        lines.extend(f"  - `{_cell(destination)}`" for destination in report.destinations)
     lines.extend(["", "## Warnings", ""])
     warning_counts = Counter(report.warnings)
     if warning_counts:
@@ -228,7 +248,12 @@ def format_stats(report: ConversionReport) -> str:
 
 
 def format_preflight(report: ConversionReport, plan: OutputPlan) -> str:
-    lines = [format_stats(report), "", "Preflight: no TTS files were written."]
+    lines = [
+        "Preflight passed.",
+        format_stats(report),
+        "",
+        "Preflight: no TTS files were written.",
+    ]
     if plan.layout == "single":
         lines.extend(["Would write:", f"  {plan.artifacts[0].path}"])
     else:
@@ -238,8 +263,17 @@ def format_preflight(report: ConversionReport, plan: OutputPlan) -> str:
     return "\n".join(lines)
 
 
-def write_report(path: Path, report: ConversionReport) -> None:
-    validate_report_path(path)
-    content = markdown_report(report) if report_format(path) == "md" else json_report(report)
+def render_report(report: ConversionReport, format: str) -> str:
+    if format == "md":
+        return markdown_report(report)
+    if format == "json":
+        return json_report(report)
+    raise ValueError("Report format must be 'md' or 'json'")
+
+
+def write_report(path: Path, report: ConversionReport, *, format: str | None = None) -> None:
+    validate_report_path(path, format=format)
+    selected_format = format or report_format(path)
+    content = render_report(report, selected_format)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8", newline="\n")

@@ -56,7 +56,7 @@ def plan_output(
 ) -> OutputPlan:
     """Build and validate a deterministic output artifact plan."""
     if layout not in {"single", "chapters"}:
-        raise ValueError("output_layout must be 'single' or 'chapters'")
+        raise ValueError("layout must be 'single' or 'chapters'")
     if output_format not in {"txt", "ssmd"}:
         raise ValueError(f"Unsupported output format: {output_format!r}")
 
@@ -76,8 +76,7 @@ def plan_output(
         artifacts = tuple(
             OutputArtifact(
                 section_id=section.id,
-                path=directory
-                / f"{index:03d}-{_sanitize_title(section.title)}{extension}",
+                path=directory / f"{index:03d}-{_sanitize_title(section.title)}{extension}",
                 format=output_format,
             )
             for index, section in enumerate(document.sections, start=1)
@@ -171,9 +170,7 @@ def render_artifacts(
     )
 
 
-def write_artifacts(
-    plan: OutputPlan, rendered: tuple[tuple[OutputArtifact, str], ...]
-) -> None:
+def write_artifacts(plan: OutputPlan, rendered: tuple[tuple[OutputArtifact, str], ...]) -> None:
     """Write the complete rendered artifact set after validating all destinations."""
     if tuple(artifact for artifact, _ in rendered) != plan.artifacts:
         raise ValueError("Rendered artifacts do not match the output plan")
