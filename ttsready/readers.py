@@ -249,6 +249,8 @@ class EpubReader:
                 text=chapter.text.strip(),
                 title=chapter.title,
                 source_ref=chapter.href,
+                parent_id=chapter.parent_id,
+                level=chapter.level,
             )
             for chapter in chapters
             if chapter.text.strip() or chapter.title.strip()

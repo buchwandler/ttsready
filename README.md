@@ -7,13 +7,13 @@ It accepts common document formats, converts written forms to spoken forms with
 [`phrasplit`](https://pypi.org/project/phrasplit/), and renders either plain UTF-8 text
 or SSMD.
 
-This repository is an MVP. Its intentionally small pipeline is:
+The single-command workflow keeps the existing invocation and prepares selected source sections:
 
 ```text
-input document -> plain sections -> paragraphs -> spokenform -> paragraph sizing -> txt/ssmd
+document -> section selection -> paragraphs -> spokenform -> semantic chunking -> txt/ssmd
 ```
 
-## Supported MVP inputs
+## Supported inputs
 
 - EPUB (`.epub`) via `epub2text`
 - PDF (`.pdf`) via `pypdf`
@@ -42,46 +42,97 @@ pytest
 
 ## CLI
 
-Plain text is the default output:
+The primary invocation remains `ttsready SOURCE`. Plain text is the default output:
 
 ```bash
+ttsready "Platform Decay - Martha Wells.epub"
 ttsready book.epub -o book.txt --language de --max-paragraph-chars 800
 ```
 
-SSMD output is selected by the output suffix or explicitly with `--format`:
-
-```bash
-ttsready book.epub -o book.ssmd --language de --max-paragraph-chars 1000
-ttsready report.pdf --format ssmd -o report.ssmd
-```
-
 If `--language` is omitted, `ttsready` uses document metadata when available and falls
-back to English.
+back to English. `spokenform` is enabled by default. Disable normalization with
+`--no-spokenform`. Real section titles are included by default; use `--no-titles` to omit them.
 
-`spokenform` is enabled by default. For extraction/splitting only:
+### List and select sections
+
+List available chapters or sections without preparing or writing output:
 
 ```bash
-ttsready input.pdf -o output.txt --no-spokenform
+ttsready book.epub --list-chapters
 ```
 
-Chapter/section titles are included by default when the reader has a real section title
-(for example an EPUB chapter). Disable that with `--no-titles`.
+`--list-sections` is an alias. Select sections with 1-based indexes and inclusive ranges:
+
+```bash
+ttsready book.epub --chapters 3-5,8 -o selected.txt
+ttsready book.epub --sections 4,1-2 --preflight
+```
+
+Selections preserve the requested order and remove duplicate indexes. Invalid or out-of-range
+selections are errors. The same options work for Markdown and other documents with sections.
+
+### Output formats and layouts
+
+An explicit `--format txt|ssmd` takes precedence over suffix inference. In single-file layout,
+an `.ssmd` output suffix selects SSMD when `--format` is omitted. Chapter layout defaults to TXT:
+
+```bash
+ttsready book.epub --format ssmd -o book.ssmd
+ttsready book.epub --chapters 3-5 --output-layout chapters -o selected/
+```
+
+Chapter layout writes one file per selected section. Filenames are sanitized and prefixed by
+their output order. If `-o` is omitted, the output directory is derived as `book-ttsready/`.
+
+### Statistics, reports, and preflight
+
+`--stats` prints conversion, spokenform, splitting, and output statistics. `--report` writes a
+detailed Markdown or JSON report containing exact changed source spans and their provenance:
+
+```bash
+ttsready book.epub --stats
+ttsready book.epub --report report.md
+ttsready book.epub --chapters 3-5 --output-layout chapters -o selected/ --report report.json
+```
+
+`--preflight` runs the full selected preparation and rendering path in memory, prints statistics
+and the planned destination paths, and writes no TTS output files. An explicitly requested
+`--report` file may still be written:
+
+```bash
+ttsready book.epub --chapters 4-9 --preflight
+ttsready book.epub --preflight --report preflight.json
+```
+
+### Paragraph sizing and rendered lines
+
+`--max-paragraph-chars` controls semantic TTS chunking after spoken-form normalization.
+`--line-width` is a separate presentation option. It wraps at whitespace and does not split long
+words or change the number of prepared paragraphs. `--paragraph-breaks` controls separation
+between prepared paragraphs: `0` joins them with spaces, `1` uses one newline, and `2` uses a
+blank line. The default is `2`, preserving the existing TXT layout.
+
+```bash
+ttsready book.epub --max-paragraph-chars 900 --line-width 100 --paragraph-breaks 1
+```
 
 ## Python API
 
 ```python
-from ttsready import convert
+from ttsready import RenderOptions, convert
 
 result = convert(
     "book.epub",
     output_format="txt",
     language="de",
     max_paragraph_chars=800,
+    render_options=RenderOptions(line_width=100, paragraph_breaks=1),
 )
 
 print(result.text)
 print(result.language)
 print(len(result.paragraphs))
+print(result.report.spokenform.source_replacements if result.report else 0)
 ```
 
 You can separate loading and preparation:
@@ -97,6 +148,11 @@ result = prepare(
     max_paragraph_chars=800,
 )
 ```
+
+
+`prepare` and `convert` return a `ConversionResult` with a structured `ConversionReport`, including
+section metrics and exact `spokenform` source changes. `parse_section_range` is also available
+from the package for callers that need the same 1-based selector syntax.
 
 ## Paragraph sizing
 
@@ -117,13 +173,13 @@ git tag v0.1.0
 ```
 
 Builds from a tagged Git checkout receive the tag-derived version. Untagged development
-builds receive a development version. Because this MVP ZIP does not contain `.git`
-metadata, its fallback version is `0.1.0.dev0` until you place it in a Git repository.
+builds receive a development version. Source archives without `.git` metadata use the fallback
+version `0.1.0.dev0` until placed in a Git repository.
 
 The generated `ttsready/_version.py` is build output and should not be edited manually.
 
-## Scope after the MVP
+## Design boundaries
 
-Natural next additions are DOCX input, chapter selection, richer PDF cleanup, diagnostic
-reports, and renderer registration. The MVP avoids those until the core document-to-TTS
-pipeline is stable.
+`ttsready` remains a single-command preparation CLI. It does not generate audio, detect languages
+automatically, or add DOCX support. Chapter discovery and selection apply to the sections supplied
+by existing readers.

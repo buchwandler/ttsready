@@ -13,14 +13,31 @@ except (ImportError, AttributeError):
         __version__ = "0.1.0.dev0"
 
 from .errors import TTSReadyError, UnsupportedInputError
-from .models import ConversionResult, Document, PreparedParagraph, Section, SourceInfo
+from .models import (
+    ConversionReport,
+    ConversionResult,
+    Document,
+    PreparedParagraph,
+    RenderOptions,
+    Section,
+    SectionStats,
+    SourceInfo,
+    SpokenChange,
+    SpokenformStats,
+)
 from .pipeline import convert, prepare, source_paragraphs
 from .readers import load, reader_for
+from .selection import parse_section_range
 
 __all__ = [
     "ConversionResult",
     "Document",
+    "ConversionReport",
     "PreparedParagraph",
+    "RenderOptions",
+    "SectionStats",
+    "SpokenChange",
+    "SpokenformStats",
     "Section",
     "SourceInfo",
     "TTSReadyError",
@@ -31,4 +48,5 @@ __all__ = [
     "prepare",
     "reader_for",
     "source_paragraphs",
+    "parse_section_range",
 ]
