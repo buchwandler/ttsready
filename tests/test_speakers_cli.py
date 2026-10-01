@@ -24,9 +24,7 @@ def _source_and_config(tmp_path: Path) -> tuple[Path, Path]:
         Sidecar(
             source={"format": "text", "file_sha256": file_sha256(source)},
             lexicon=(),
-            characters=(
-                {"id": "alice", "display_name": "Alice", "aliases": ["Al"]},
-            ),
+            characters=({"id": "alice", "display_name": "Alice", "aliases": ["Al"]},),
             speaker_annotations=(),
         ),
     )

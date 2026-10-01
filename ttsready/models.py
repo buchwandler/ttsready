@@ -18,6 +18,7 @@ class RenderOptions:
         if self.paragraph_breaks not in {0, 1, 2}:
             raise ValueError("paragraph_breaks must be 0, 1, or 2")
 
+
 @dataclass(frozen=True, slots=True)
 class SourceInfo:
     path: Path
@@ -34,6 +35,7 @@ class Section:
     parent_id: str | None = None
     level: int = 1
     source_index: int | None = None
+
 
 @dataclass(slots=True)
 class Document:
@@ -75,7 +77,6 @@ class ContextRecord:
     spoken_sentences: tuple[SentenceContext, ...]
 
 
-
 @dataclass(frozen=True, slots=True)
 class LexicalOccurrence:
     context_id: str
@@ -105,6 +106,8 @@ class LexicalReviewReport:
     tool_versions: dict[str, str]
     findings: tuple[LexicalFinding, ...]
     schema: str = "ttsready.lexical-review.v1"
+
+
 @dataclass(frozen=True, slots=True)
 class SpokenChange:
     id: str
@@ -123,6 +126,7 @@ class SpokenChange:
     output_start: int
     output_end: int
     provenance: dict[str, Any] = field(default_factory=dict)
+
 
 @dataclass(slots=True)
 class SpokenformStats:

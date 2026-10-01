@@ -50,12 +50,8 @@ def make_report() -> ConversionReport:
                 is_title=False,
                 source_text="Dr. Smith is here.",
                 spoken_text="Doctor Smith is here.",
-                source_sentences=(
-                    SentenceContext("sent:v1:1", 0, "Dr. Smith is here.", 0, 18),
-                ),
-                spoken_sentences=(
-                    SentenceContext("sent:v1:2", 0, "Doctor Smith is here.", 0, 21),
-                ),
+                source_sentences=(SentenceContext("sent:v1:1", 0, "Dr. Smith is here.", 0, 18),),
+                spoken_sentences=(SentenceContext("sent:v1:2", 0, "Doctor Smith is here.", 0, 21),),
             )
         ],
         spokenform=SpokenformStats(
@@ -154,9 +150,7 @@ def test_write_report_outputs_json_and_markdown(tmp_path: Path) -> None:
 
 def test_preflight_lists_exact_single_and_chapter_destinations(tmp_path: Path) -> None:
     report = make_report()
-    single_plan = OutputPlan(
-        "single", tmp_path, (OutputArtifact(None, tmp_path / "book.txt"),)
-    )
+    single_plan = OutputPlan("single", tmp_path, (OutputArtifact(None, tmp_path / "book.txt"),))
     chapter_plan = OutputPlan(
         "chapters",
         tmp_path / "chapters",

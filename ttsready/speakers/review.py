@@ -177,7 +177,6 @@ def review_speakers(
     return SpeakerReview(utterances=utterances, decisions=decisions)
 
 
-
 def render_speaker_review(review: SpeakerReview, *, format: str = "md") -> str:
     if format == "json":
         return json.dumps(asdict(review), ensure_ascii=False, indent=2)
@@ -200,9 +199,7 @@ def render_speaker_review(review: SpeakerReview, *, format: str = "md") -> str:
             confidence = "" if decision.confidence is None else f"{decision.confidence:.3f}"
             status = decision.status
         text = " ".join(utterance.text.replace("|", "&#124;").splitlines())
-        lines.append(
-            f"| `{utterance.id}` | {text} | {speaker} | {confidence} | {status} |"
-        )
+        lines.append(f"| `{utterance.id}` | {text} | {speaker} | {confidence} | {status} |")
     return "\n".join(lines)
 
 

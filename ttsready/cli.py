@@ -62,16 +62,15 @@ class Layout(str, Enum):
     chapters = "chapters"
 
 
-
 class ReportFormat(str, Enum):
     md = "md"
     json = "json"
 
 
-
 class SpeakerReviewFormat(str, Enum):
     md = "md"
     json = "json"
+
 
 SourceArgument = Annotated[
     Path,
@@ -205,7 +204,6 @@ def _load_selected_document(source: Path, chapters: str | None) -> Document:
     return select_document_sections(document, indices)
 
 
-
 def _load_sidecar_for_document(path: Path | None, document: Document) -> Sidecar | None:
     if path is None:
         return None
@@ -217,7 +215,6 @@ def _load_sidecar_for_document(path: Path | None, document: Document) -> Sidecar
         )
     except SidecarError as exc:
         raise typer.BadParameter(str(exc), param_hint="--config") from exc
-
 
 
 def _load_lexhint(language: str, *, variant: str, dataset_version: str | None):
@@ -541,8 +538,7 @@ def context_command(
         except KeyError:
             _fail_runtime(
                 KeyError(
-                    f"No Spokenform change found and no lexical finding "
-                    f"found for ID {change_id!r}"
+                    f"No Spokenform change found and no lexical finding found for ID {change_id!r}"
                 )
             )
     if bug_report and is_lexical:
@@ -555,7 +551,6 @@ def context_command(
         typer.echo(format_lexical_context(payload), nl=False)
     else:
         typer.echo(format_context(payload, paragraph=paragraph), nl=False)
-
 
 
 @app.command("review")
@@ -639,7 +634,6 @@ def review_command(
     except Exception as exc:
         _fail_runtime(exc)
     typer.echo(f"Review written: {output}")
-
 
 
 @app.command("speakers")

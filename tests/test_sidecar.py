@@ -112,6 +112,7 @@ def test_load_sidecar_rejects_invalid_override_scope(tmp_path: Path) -> None:
     with pytest.raises(SidecarError, match="requires section_id or section_locator"):
         load_sidecar(path, source_path=source, source_format="text")
 
+
 def test_sidecar_preserves_logical_characters_and_reviewed_speakers(tmp_path: Path) -> None:
     source = tmp_path / "book.txt"
     source.write_text("Hello", encoding="utf-8")
@@ -146,9 +147,7 @@ def test_sidecar_preserves_logical_characters_and_reviewed_speakers(tmp_path: Pa
 
 def test_override_precedence_longer_match_and_conflict_detection() -> None:
     document = _override("document", "New", "old")
-    section = _override(
-        "section", "New", "section", scope={"type": "section", "section_id": "s1"}
-    )
+    section = _override("section", "New", "section", scope={"type": "section", "section_id": "s1"})
     occurrence = _override(
         "occurrence",
         "New",

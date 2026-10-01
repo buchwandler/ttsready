@@ -80,7 +80,6 @@ def change_id(
     )
 
 
-
 def utterance_id(
     context_id: str,
     *,

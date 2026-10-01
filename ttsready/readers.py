@@ -305,7 +305,6 @@ class PdfReader:
         )
 
 
-
 def default_readers() -> list[InputReader]:
     return [TextReader(), MarkdownReader(), HtmlReader(), EpubReader(), PdfReader()]
 

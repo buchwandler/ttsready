@@ -198,7 +198,6 @@ def test_candidates_can_be_loaded_from_sidecar() -> None:
     assert speakers_from_sidecar(_sidecar()) == _candidates()
 
 
-
 def test_sidecar_writer_rejects_suggestions_and_tts_voice_bindings(tmp_path: Path) -> None:
     path = tmp_path / "invalid.yaml"
     sidecar = _sidecar()

@@ -31,7 +31,6 @@ def test_reader_for_rejects_unknown_extension(tmp_path: Path) -> None:
         raise AssertionError("expected unsupported input")
 
 
-
 def test_ssmd_is_not_registered_as_an_input_format(tmp_path: Path) -> None:
     source = tmp_path / "sample.ssmd"
     source.write_text("This format is no longer accepted.", encoding="utf-8")
@@ -42,7 +41,6 @@ def test_ssmd_is_not_registered_as_an_input_format(tmp_path: Path) -> None:
         assert "Unsupported input" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("SSMD input should be unsupported")
-
 
 
 def test_ssmd_is_not_a_runtime_dependency() -> None:

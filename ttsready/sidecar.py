@@ -70,9 +70,7 @@ def _parse_override(value: Any, index: int) -> SpeechOverride:
         raise SidecarError(f"{field}.case_sensitive must be a boolean")
     kind = item.get("kind", "pronunciation")
     if not isinstance(kind, str) or kind not in {"pronunciation", "normalization_override"}:
-        raise SidecarError(
-            f"{field}.kind must be 'pronunciation' or 'normalization_override'"
-        )
+        raise SidecarError(f"{field}.kind must be 'pronunciation' or 'normalization_override'")
     scope = _mapping(item.get("scope", {"type": "document"}), f"{field}.scope")
     scope_type = scope.get("type", "document")
     if not isinstance(scope_type, str) or scope_type not in {"document", "section", "occurrence"}:
@@ -178,7 +176,6 @@ def _parse_speaker_annotations(value: Any) -> tuple[dict[str, Any], ...]:
             }
         )
     return tuple(annotations)
-
 
 
 def _validate_speaker_references(

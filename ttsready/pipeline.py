@@ -55,7 +55,6 @@ class SpokenOutcome:
     changes: tuple[SpokenChange, ...]
 
 
-
 @dataclass(frozen=True, slots=True)
 class SourceItem:
     section: Section
@@ -63,6 +62,7 @@ class SourceItem:
     source_paragraph: int
     is_title: bool
     text: str
+
 
 def _spoken(
     text: str,
@@ -258,6 +258,7 @@ def _iter_section_inputs(document: Document, include_titles: bool) -> Iterable[S
         for index, paragraph in enumerate(source_paragraphs(section.text)):
             yield SourceItem(section, section_index, index, False, paragraph)
 
+
 def prepare(
     document: Document,
     *,
@@ -365,16 +366,12 @@ def prepare(
         spokenform_stats.warnings += len(outcome.warnings)
         report.warnings.extend(outcome.warnings)
         for stage, count in outcome.stage_edit_counts.items():
-            spokenform_stats.stage_edits[stage] = (
-                spokenform_stats.stage_edits.get(stage, 0) + count
-            )
+            spokenform_stats.stage_edits[stage] = spokenform_stats.stage_edits.get(stage, 0) + count
         section_stats_by_id[section_id].spokenform_changes += len(outcome.changes)
         for change in outcome.changes:
             report.changes.append(change)
             if change.rule:
-                spokenform_stats.rules[change.rule] = (
-                    spokenform_stats.rules.get(change.rule, 0) + 1
-                )
+                spokenform_stats.rules[change.rule] = spokenform_stats.rules.get(change.rule, 0) + 1
             if change.recognition_domain:
                 spokenform_stats.domains[change.recognition_domain] = (
                     spokenform_stats.domains.get(change.recognition_domain, 0) + 1

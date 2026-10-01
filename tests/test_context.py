@@ -90,7 +90,6 @@ def test_context_selects_overlapping_sentences_and_falls_back_to_context() -> No
     assert payload["source_sentence_text"] != report.contexts[0].source_text
 
 
-
 def test_context_falls_back_to_full_context_when_spans_do_not_overlap() -> None:
     from dataclasses import replace
 

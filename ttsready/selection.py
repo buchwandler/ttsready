@@ -42,6 +42,7 @@ def parse_section_range(spec: str, count: int) -> list[int]:
                 selected.append(zero_based)
     return selected
 
+
 def select_document_sections(document: Document, indices: list[int]) -> Document:
     """Return a document view containing sections in the requested order."""
     selected = [
@@ -63,9 +64,7 @@ def format_section_listing(document: Document) -> str:
     rows = []
     for index, section in enumerate(document.sections, start=1):
         title = (
-            section.title.strip()
-            if section.title and section.title.strip()
-            else f"Section {index}"
+            section.title.strip() if section.title and section.title.strip() else f"Section {index}"
         )
         title = f"{'  ' * max(section.level - 1, 0)}{title}"
         rows.append(

@@ -164,11 +164,9 @@ constant in `pyproject.toml`. Builds from tagged Git checkouts receive the tag-d
 automatically detect languages, rewrite EPUB files, or render SSMD. Downstream tools own SSMD
 syntax and rendering.
 
-
 ## Review identities
 
 Reports use schema `ttsready.report.v2`. Each source context has a deterministic `ctx:v1:` ID, and each Spokenform change has a `chg:v1:` ID derived from its source context and exact source span. Markdown change rows start with the change ID. Lexical findings and quoted utterances also have stable, versioned IDs. Use `ttsready context SOURCE ID` for change and lexical finding IDs; `--json`, `--paragraph`, and `--bug-report` select focused output modes.
-
 
 JSON reports include reusable source contexts, exact-offset source/spoken sentences, a source fingerprint, and best-effort tool version metadata. `context` returns the sentence spans overlapping a change or finding; when none overlap, it falls back to the full source context. `--paragraph` adds the complete source paragraph.
 

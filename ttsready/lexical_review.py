@@ -94,9 +94,11 @@ def _is_unusual(surface: str) -> bool:
 
 
 def _is_mixed_case(surface: str) -> bool:
-    return any(character.islower() for character in surface) and any(
-        character.isupper() for character in surface
-    ) and not surface.istitle()
+    return (
+        any(character.islower() for character in surface)
+        and any(character.isupper() for character in surface)
+        and not surface.istitle()
+    )
 
 
 def _candidate_reasons(
@@ -188,15 +190,11 @@ def review_contexts(
             letters = [character for character in surface if character.isalpha()]
             if len(letters) == 1 and not _is_unusual(surface):
                 continue
-            sentence_id, sentence_initial = _occurrence_sentence(
-                context, start, sentence_starts
-            )
+            sentence_id, sentence_initial = _occurrence_sentence(context, start, sentence_starts)
             normalized = surface.casefold()
             term = terms[normalized]
             term.forms[surface] += 1
-            term.occurrences.append(
-                LexicalOccurrence(context.id, start, end, sentence_id)
-            )
+            term.occurrences.append(LexicalOccurrence(context.id, start, end, sentence_id))
             term.proper_name |= (
                 bool(letters)
                 and letters[0].isupper()
@@ -204,9 +202,7 @@ def review_contexts(
                 and not sentence_initial
             )
             term.mixed_case |= _is_mixed_case(surface)
-            term.all_caps |= len(letters) > 1 and all(
-                character.isupper() for character in letters
-            )
+            term.all_caps |= len(letters) > 1 and all(character.isupper() for character in letters)
             term.unusual_graphemes |= _is_unusual(surface)
 
     findings = []

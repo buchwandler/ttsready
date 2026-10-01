@@ -14,7 +14,8 @@ from ttsready.selection import format_section_listing, parse_section_range, sele
 def make_document(sections: list[Section] | None = None) -> Document:
     return Document(
         source=SourceInfo(Path("sample.md"), "markdown"),
-        sections=sections or [
+        sections=sections
+        or [
             Section("s1", "First paragraph.\n\nSecond paragraph.", "One"),
             Section("s2", "Nested prose.", "Interlude", level=2, parent_id="s1"),
             Section("s3", ""),

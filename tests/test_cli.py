@@ -194,6 +194,7 @@ def test_ssmd_is_not_an_output_choice(monkeypatch, tmp_path: Path) -> None:
     assert "SSMD output is no longer supported" in result.output
     assert not output.exists()
 
+
 def test_preflight_runs_full_render_and_writes_nothing(monkeypatch, tmp_path: Path) -> None:
     source = tmp_path / "book.md"
     prepare_source(monkeypatch, source)

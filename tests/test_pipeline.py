@@ -204,7 +204,6 @@ def test_render_options_do_not_change_prepared_paragraph_count() -> None:
     assert result.text == "one two\nthree\nfour\nfive\n"
 
 
-
 def test_prepare_records_duplicate_source_contexts_and_exact_sentences() -> None:
     result = pipeline.prepare(
         document("Repeated. Unicode café stays.\n\nRepeated. Unicode café stays.", title="Title."),

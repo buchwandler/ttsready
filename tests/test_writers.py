@@ -46,7 +46,6 @@ def test_zero_breaks_join_paragraphs_before_visual_wrapping() -> None:
     assert render_txt(paragraphs, options=options) == "one two\nthree four\n"
 
 
-
 def test_render_options_validate_line_width_and_break_count() -> None:
     with pytest.raises(ValueError, match="line_width"):
         RenderOptions(line_width=0)

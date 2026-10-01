@@ -55,9 +55,7 @@ def format_context(payload: dict[str, Any], *, paragraph: bool = False) -> str:
     change = payload["change"]
     context: dict[str, Any] = payload["context"]
     section_name = payload["section_title"] or context["section_locator"]
-    paragraph_label = (
-        "Title" if context["is_title"] else str(context["source_paragraph"] + 1)
-    )
+    paragraph_label = "Title" if context["is_title"] else str(context["source_paragraph"] + 1)
     lines = [
         f"Change: {change['id']}",
         f"Section: {context['section_index']:02d} {section_name}",
