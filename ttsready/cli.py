@@ -165,6 +165,7 @@ ReportFormatOption = Annotated[
 app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
+    rich_markup_mode=None,
     help="Prepare documents for text-to-speech.",
 )
 
