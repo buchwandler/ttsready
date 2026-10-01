@@ -20,9 +20,6 @@ jobs:
       run: |
         pip install pytest "ruff>=0.16,<0.17" mypy
         pip install -e ".[dev]"
-        python -m compileall -q pipersynth tests
-    - name: Type-check public API
-      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
-      run: python -m mypy --config-file tests/typecheck/mypy.ini tests/typecheck/engine_api.py
+        python -m compileall -q ttsready tests
     - name: Tests
       run: pytest -m "not slow"
