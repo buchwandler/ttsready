@@ -4,22 +4,29 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
+from .identifiers import change_id, file_sha256, section_locator, stable_id, text_sha256
+from .identifiers import context_id as make_context_id
 from .models import (
+    ContextRecord,
     ConversionReport,
     ConversionResult,
     Document,
-    OutputFormat,
     PreparedParagraph,
     RenderOptions,
+    Section,
     SectionStats,
+    SentenceContext,
     SpokenChange,
     SpokenformStats,
 )
+from .overrides import apply_overrides, find_overrides
 from .readers import load
-from .writers import render
+from .sidecar import Sidecar
+from .writers import render_txt
 
 _PARAGRAPH_BREAK = re.compile(r"\n[ \t]*\n+")
 _INLINE_LINE_BREAK = re.compile(r"[ \t]*\n[ \t]*")
@@ -48,52 +55,180 @@ class SpokenOutcome:
     changes: tuple[SpokenChange, ...]
 
 
+
+@dataclass(frozen=True, slots=True)
+class SourceItem:
+    section: Section
+    section_index: int
+    source_paragraph: int
+    is_title: bool
+    text: str
+
 def _spoken(
     text: str,
     *,
+    context_id: str,
     language: str,
     enabled: bool,
     section_id: str,
+    section_locator_value: str,
     section_index: int,
     source_paragraph: int,
+    sidecar: Sidecar | None,
 ) -> SpokenOutcome:
-    if not enabled:
-        return SpokenOutcome(text.strip(), (), False, {}, ())
-    from spokenform import prepare as prepare_spokenform
+    overrides = sidecar.lexicon if sidecar else ()
+    matches = find_overrides(
+        text,
+        overrides,
+        context_id=context_id,
+        section_id=section_id,
+        section_locator=section_locator_value,
+    )
+    if enabled:
+        from spokenform import prepare as prepare_spokenform
 
-    prepared = prepare_spokenform(text, language=language, use_spacy=False)
-    stage_edit_counts: dict[str, int] = {}
-    for stage in prepared.stages:
-        stage_edit_counts[stage.name] = stage_edit_counts.get(stage.name, 0) + len(
-            stage.mapped_edits
+        prepared = prepare_spokenform(
+            text,
+            language=language,
+            use_spacy=False,
+            protected_spans=tuple((match.start, match.end) for match in matches),
         )
-    changes = tuple(
+        stage_edit_counts: dict[str, int] = {}
+        for stage in prepared.stages:
+            stage_edit_counts[stage.name] = stage_edit_counts.get(stage.name, 0) + len(
+                stage.mapped_edits
+            )
+        replacements = prepared.source_replacements
+        base_changes = tuple(
+            SpokenChange(
+                id=change_id(
+                    context_id,
+                    source_start=replacement.source_start,
+                    source_end=replacement.source_end,
+                    source=replacement.source,
+                ),
+                context_id=context_id,
+                section_id=section_id,
+                section_index=section_index,
+                source_paragraph=source_paragraph,
+                source=replacement.source,
+                replacement=replacement.replacement,
+                stages=tuple(replacement.stages),
+                kind=replacement.kind,
+                rule=replacement.rule,
+                recognition_domain=replacement.recognition_domain,
+                source_start=replacement.source_start,
+                source_end=replacement.source_end,
+                output_start=replacement.output_start,
+                output_end=replacement.output_end,
+            )
+            for replacement in replacements
+        )
+        warnings = tuple(prepared.warnings)
+        output_text = prepared.spoken_text.strip()
+    else:
+        replacements = ()
+        base_changes = ()
+        stage_edit_counts = {}
+        warnings = ()
+        output_text = text.strip()
+
+    spoken_text, applied = apply_overrides(output_text, matches, replacements)
+    custom_changes = tuple(
         SpokenChange(
+            id=change_id(
+                context_id,
+                source_start=item.match.start,
+                source_end=item.match.end,
+                source=text[item.match.start : item.match.end],
+            ),
+            context_id=context_id,
             section_id=section_id,
             section_index=section_index,
             source_paragraph=source_paragraph,
-            source=replacement.source,
-            replacement=replacement.replacement,
-            stages=tuple(replacement.stages),
-            kind=replacement.kind,
-            rule=replacement.rule,
-            recognition_domain=replacement.recognition_domain,
-            source_start=replacement.source_start,
-            source_end=replacement.source_end,
-            output_start=replacement.output_start,
-            output_end=replacement.output_end,
+            source=text[item.match.start : item.match.end],
+            replacement=item.match.override.spoken,
+            stages=("custom",),
+            kind=item.match.override.kind,
+            rule=f"sidecar:{item.match.override.id}",
+            recognition_domain=None,
+            source_start=item.match.start,
+            source_end=item.match.end,
+            output_start=item.output_start,
+            output_end=item.output_end,
+            provenance=item.match.override.provenance,
         )
-        for replacement in prepared.source_replacements
+        for item in applied
     )
-    spoken_text = prepared.spoken_text.strip()
+    if applied:
+        stage_edit_counts["custom"] = len(applied)
+        shifted_changes = []
+        for change in base_changes:
+            delta = sum(
+                len(item.match.override.spoken) - (item.match.end - item.match.start)
+                for item in applied
+                if item.match.end <= change.source_start
+            )
+            shifted_changes.append(
+                replace(
+                    change,
+                    output_start=change.output_start + delta,
+                    output_end=change.output_end + delta,
+                )
+            )
+        base_changes = tuple(shifted_changes)
+
+    changes = (*base_changes, *custom_changes)
     return SpokenOutcome(
         text=spoken_text,
-        warnings=tuple(prepared.warnings),
+        warnings=warnings,
         changed=spoken_text != text.strip(),
         stage_edit_counts=stage_edit_counts,
         changes=changes,
     )
 
+
+def _sentence_contexts(
+    context_id: str, text: str, *, kind: str, language: str
+) -> tuple[SentenceContext, ...]:
+    from phrasplit import split_with_offsets
+
+    segments = split_with_offsets(
+        text,
+        mode="sentence",
+        use_spacy=False,
+        language=language,
+    )
+    return tuple(
+        SentenceContext(
+            id=stable_id(
+                "sent",
+                {
+                    "context_id": context_id,
+                    "kind": kind,
+                    "index": index,
+                    "start": segment.char_start,
+                    "end": segment.char_end,
+                    "text": text[segment.char_start : segment.char_end],
+                },
+            ),
+            index=index,
+            text=text[segment.char_start : segment.char_end],
+            start=segment.char_start,
+            end=segment.char_end,
+        )
+        for index, segment in enumerate(segments)
+    )
+
+
+def _tool_versions() -> dict[str, str]:
+    versions: dict[str, str] = {}
+    for distribution in ("ttsready", "spokenform", "phrasplit", "epub2text"):
+        try:
+            versions[distribution] = version(distribution)
+        except PackageNotFoundError:
+            continue
+    return versions
 
 
 def _split_oversized(text: str, *, max_chars: int | None, language: str) -> list[str]:
@@ -115,30 +250,25 @@ def _split_oversized(text: str, *, max_chars: int | None, language: str) -> list
     return [part.strip() for part in parts if part.strip()]
 
 
-def _iter_section_inputs(
-    document: Document, include_titles: bool
-) -> Iterable[tuple[str, int, int, bool, str]]:
+def _iter_section_inputs(document: Document, include_titles: bool) -> Iterable[SourceItem]:
     for output_index, section in enumerate(document.sections, start=1):
         section_index = section.source_index or output_index
         if include_titles and section.title and section.title.strip():
-            yield section.id, section_index, -1, True, section.title.strip()
+            yield SourceItem(section, section_index, -1, True, section.title.strip())
         for index, paragraph in enumerate(source_paragraphs(section.text)):
-            yield section.id, section_index, index, False, paragraph
-
+            yield SourceItem(section, section_index, index, False, paragraph)
 
 def prepare(
     document: Document,
     *,
-    output_format: OutputFormat = "txt",
     language: str | None = None,
     max_paragraph_chars: int | None = 1000,
     apply_spokenform: bool = True,
     include_titles: bool = True,
     render_options: RenderOptions | None = None,
+    sidecar: Sidecar | None = None,
 ) -> ConversionResult:
     """Prepare a loaded document for TTS and render it."""
-    if output_format not in {"txt", "ssmd"}:
-        raise ValueError(f"Unsupported output format: {output_format!r}")
     if max_paragraph_chars is not None and max_paragraph_chars < 1:
         raise ValueError("max_paragraph_chars must be at least 1")
 
@@ -166,26 +296,65 @@ def prepare(
         metadata_language=str(metadata_language) if metadata_language is not None else None,
         requested_language=requested_language,
         effective_language=selected_language,
-        output_format=output_format,
         total_sections=document.original_section_count or len(document.sections),
         selected_sections=len(document.sections),
         input_chars=sum(len(section.text) for section in document.sections),
         source_paragraphs=sum(item.source_paragraphs for item in section_stats),
         sections=section_stats,
+        source_sha256=file_sha256(str(document.source.path)),
+        tool_versions=_tool_versions(),
     )
     prepared: list[PreparedParagraph] = []
     spokenform_stats: SpokenformStats = report.spokenform
 
-    for section_id, section_index, source_index, is_title, raw in _iter_section_inputs(
-        document, include_titles
-    ):
+    duplicate_ordinals: dict[tuple[str, str, str], int] = {}
+    for source_item in _iter_section_inputs(document, include_titles):
+        section = source_item.section
+        section_id = section.id
+        section_index = source_item.section_index
+        source_index = source_item.source_paragraph
+        is_title = source_item.is_title
+        raw = source_item.text
+        locator = section_locator(section)
+        kind = "title" if is_title else "paragraph"
+        source_digest = text_sha256(raw)
+        duplicate_key = (locator, kind, source_digest)
+        duplicate_ordinal = duplicate_ordinals.get(duplicate_key, 0)
+        duplicate_ordinals[duplicate_key] = duplicate_ordinal + 1
+        context_key = make_context_id(
+            section,
+            kind=kind,
+            source_text=raw,
+            duplicate_ordinal=duplicate_ordinal,
+        )
         outcome = _spoken(
             raw,
+            context_id=context_key,
             language=selected_language,
             enabled=apply_spokenform,
             section_id=section_id,
             section_index=section_index,
             source_paragraph=source_index,
+            section_locator_value=locator,
+            sidecar=sidecar,
+        )
+        report.contexts.append(
+            ContextRecord(
+                id=context_key,
+                section_id=section_id,
+                section_locator=locator,
+                section_index=section_index,
+                source_paragraph=source_index,
+                is_title=is_title,
+                source_text=raw,
+                spoken_text=outcome.text,
+                source_sentences=_sentence_contexts(
+                    context_key, raw, kind="source", language=selected_language
+                ),
+                spoken_sentences=_sentence_contexts(
+                    context_key, outcome.text, kind="spoken", language=selected_language
+                ),
+            )
         )
         spokenform_stats.paragraphs_processed += 1
         if apply_spokenform:
@@ -243,11 +412,8 @@ def prepare(
             section_stats_by_id[section_id].prepared_paragraphs += 1
             section_stats_by_id[section_id].output_chars += len(part)
 
-    rendered = render(
-        output_format,
+    rendered = render_txt(
         prepared,
-        metadata=document.metadata,
-        language=selected_language,
         options=render_options or RenderOptions(),
     )
     report.output_chars = len(rendered)
@@ -256,7 +422,6 @@ def prepare(
         document=document,
         paragraphs=prepared,
         text=rendered,
-        output_format=output_format,
         language=selected_language,
         warnings=report.warnings,
         report=report,
@@ -266,21 +431,21 @@ def prepare(
 def convert(
     source: str | Path,
     *,
-    output_format: OutputFormat = "txt",
     language: str | None = None,
     max_paragraph_chars: int | None = 1000,
     apply_spokenform: bool = True,
     include_titles: bool = True,
     render_options: RenderOptions | None = None,
+    sidecar: Sidecar | None = None,
 ) -> ConversionResult:
     """Load, prepare, and render one supported document."""
     document = load(source)
     return prepare(
         document,
-        output_format=output_format,
         language=language,
         max_paragraph_chars=max_paragraph_chars,
         apply_spokenform=apply_spokenform,
         include_titles=include_titles,
         render_options=render_options,
+        sidecar=sidecar,
     )

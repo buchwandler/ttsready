@@ -5,7 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from ttsready.models import ConversionReport, SectionStats, SpokenChange, SpokenformStats
+from ttsready.models import (
+    ContextRecord,
+    ConversionReport,
+    SectionStats,
+    SentenceContext,
+    SpokenChange,
+    SpokenformStats,
+)
 from ttsready.output import OutputArtifact, OutputPlan
 from ttsready.reporting import (
     format_preflight,
@@ -26,12 +33,31 @@ def make_report() -> ConversionReport:
         metadata_language="en",
         requested_language="en-US",
         effective_language="en-US",
-        output_format="txt",
         total_sections=2,
         selected_sections=1,
         input_chars=10,
         source_paragraphs=1,
         sections=[SectionStats("s2", 2, "Chapter 2", 1, 10, 1, 1, 1, 20)],
+        source_sha256="abc123",
+        tool_versions={"ttsready": "0.2.0", "spokenform": "0.4.5"},
+        contexts=[
+            ContextRecord(
+                id="ctx:v1:11111111111111111111",
+                section_id="s2",
+                section_locator="ref:chapter2.xhtml",
+                section_index=2,
+                source_paragraph=0,
+                is_title=False,
+                source_text="Dr. Smith is here.",
+                spoken_text="Doctor Smith is here.",
+                source_sentences=(
+                    SentenceContext("sent:v1:1", 0, "Dr. Smith is here.", 0, 18),
+                ),
+                spoken_sentences=(
+                    SentenceContext("sent:v1:2", 0, "Doctor Smith is here.", 0, 21),
+                ),
+            )
+        ],
         spokenform=SpokenformStats(
             calls=1,
             changed_calls=1,
@@ -43,6 +69,8 @@ def make_report() -> ConversionReport:
         ),
         changes=[
             SpokenChange(
+                id="chg:v1:0123456789abcdefabcd",
+                context_id="ctx:v1:11111111111111111111",
                 section_id="s2",
                 section_index=2,
                 source_paragraph=0,
@@ -74,7 +102,12 @@ def make_report() -> ConversionReport:
 def test_json_report_preserves_schema_provenance_and_raw_warnings() -> None:
     data = json.loads(json_report(make_report()))
 
-    assert data["schema"] == "ttsready.report.v1"
+    assert data["schema"] == "ttsready.report.v2"
+    assert data["source_sha256"] == "abc123"
+    assert data["tool_versions"]["spokenform"] == "0.4.5"
+    assert data["contexts"][0]["source_sentences"][0]["text"] == "Dr. Smith is here."
+    assert data["contexts"][0]["spoken_sentences"][0]["end"] == 21
+    assert data["changes"][0]["context_id"] == "ctx:v1:11111111111111111111"
     assert data["spokenform"]["abbreviation_edits"] == 1
     assert data["changes"][0]["source"] == "Dr. |\nSmith"
     assert data["changes"][0]["source_start"] == 0
@@ -88,6 +121,8 @@ def test_markdown_report_escapes_table_cells_and_groups_warnings() -> None:
 
     assert "Dr. \\|<br>Smith" in rendered
     assert "Doctor Smith" in rendered
+    assert "| ID | Paragraph | Source | Replacement" in rendered
+    assert "`chg:v1:0123456789abcdefabcd`" in rendered
     assert "warning \\| one<br>continued (x2)" in rendered
     assert "Source span | Output span" in rendered
     assert "Abbreviation edits: 1" in rendered
@@ -113,19 +148,19 @@ def test_write_report_outputs_json_and_markdown(tmp_path: Path) -> None:
     write_report(json_path, report)
     write_report(markdown_path, report)
 
-    assert json.loads(json_path.read_text())["schema"] == "ttsready.report.v1"
+    assert json.loads(json_path.read_text())["schema"] == "ttsready.report.v2"
     assert markdown_path.read_text().startswith("# ttsready report\n")
 
 
 def test_preflight_lists_exact_single_and_chapter_destinations(tmp_path: Path) -> None:
     report = make_report()
     single_plan = OutputPlan(
-        "single", tmp_path, (OutputArtifact(None, tmp_path / "book.txt", "txt"),)
+        "single", tmp_path, (OutputArtifact(None, tmp_path / "book.txt"),)
     )
     chapter_plan = OutputPlan(
         "chapters",
         tmp_path / "chapters",
-        (OutputArtifact("s2", tmp_path / "chapters" / "002-chapter-2.txt", "txt"),),
+        (OutputArtifact("s2", tmp_path / "chapters" / "002-chapter-2.txt"),),
     )
 
     assert "Would write:\n  " + str(tmp_path / "book.txt") in format_preflight(report, single_plan)
@@ -151,7 +186,7 @@ def test_render_report_selects_markdown_or_json() -> None:
     report = make_report()
 
     assert render_report(report, "md").startswith("# ttsready report\n")
-    assert json.loads(render_report(report, "json"))["schema"] == "ttsready.report.v1"
+    assert json.loads(render_report(report, "json"))["schema"] == "ttsready.report.v2"
     with pytest.raises(ValueError, match="format"):
         render_report(report, "txt")
 
@@ -163,6 +198,6 @@ def test_write_report_accepts_explicit_format_without_suffix_and_rejects_conflic
     extensionless = tmp_path / "reports" / "report"
     write_report(extensionless, report, format="json")
 
-    assert json.loads(extensionless.read_text(encoding="utf-8"))["schema"] == ("ttsready.report.v1")
+    assert json.loads(extensionless.read_text(encoding="utf-8"))["schema"] == ("ttsready.report.v2")
     with pytest.raises(ValueError, match="conflicts"):
         write_report(tmp_path / "report.md", report, format="json")

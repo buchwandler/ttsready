@@ -35,7 +35,7 @@ def test_root_help_lists_commands_without_source_argument() -> None:
     result = runner.invoke(cli.app, ["--help"])
 
     assert result.exit_code == 0, result.output
-    for command in ("convert", "chapters", "preflight", "report"):
+    for command in ("convert", "chapters", "preflight", "report", "context"):
         assert command in result.output
     assert "--version" in result.output
     assert "Arguments:" not in result.output
@@ -48,7 +48,7 @@ def test_root_without_args_shows_help() -> None:
     result = runner.invoke(cli.app, [])
 
     assert result.exit_code == 2
-    for command in ("convert", "chapters", "preflight", "report"):
+    for command in ("convert", "chapters", "preflight", "report", "context"):
         assert command in result.output
 
 
@@ -62,10 +62,24 @@ def test_version_is_global() -> None:
 @pytest.mark.parametrize(
     ("command", "required", "forbidden"),
     [
-        ("convert", ("--chapters", "--layout", "txt|ssmd", "--stats"), ("--report", "--preflight")),
+        ("convert", ("--chapters", "--layout", "--stats"), ("--report", "--preflight", "--format")),
         ("chapters", ("List chapters/sections",), ("--language", "--output", "--spokenform")),
-        ("preflight", ("--chapters", "--layout", "--fail-on-warning"), ("--stats", "--report")),
+        (
+            "preflight",
+            ("--chapters", "--layout", "--fail-on-warning"),
+            ("--stats", "--report", "--format"),
+        ),
         ("report", ("md|json", "--chapters", "--output"), ("--layout", "--line-width", "--stats")),
+        (
+            "context",
+            ("--json", "--bug-report", "--paragraph", "ID"),
+            ("--format", "--unknown-only"),
+        ),
+        (
+            "review",
+            ("--unknown-only", "--max-frequency-rank", "--lexhint-variant", "md|json"),
+            ("--spokenform", "--config"),
+        ),
     ],
 )
 def test_command_help_exposes_only_relevant_options(
@@ -166,29 +180,19 @@ def test_convert_chapter_layout_uses_selected_order_and_safe_names(
     assert len(list(output_dir.iterdir())) == 2
 
 
-def test_convert_explicit_format_overrides_output_suffix(monkeypatch, tmp_path: Path) -> None:
+def test_ssmd_is_not_an_output_choice(monkeypatch, tmp_path: Path) -> None:
     source = tmp_path / "book.md"
     prepare_source(monkeypatch, source)
     output = tmp_path / "output.ssmd"
 
     result = runner.invoke(
         cli.app,
-        [
-            "convert",
-            str(source),
-            "--no-spokenform",
-            "--no-titles",
-            "--format",
-            "txt",
-            "-o",
-            str(output),
-        ],
+        ["convert", str(source), "--no-spokenform", "--no-titles", "-o", str(output)],
     )
 
-    assert result.exit_code == 0, result.output
-    assert output.read_text(encoding="utf-8") == "First.\n\nNested.\n\nThird.\n"
-    assert "Format: txt" in result.output
-
+    assert result.exit_code == 2
+    assert "SSMD output is no longer supported" in result.output
+    assert not output.exists()
 
 def test_preflight_runs_full_render_and_writes_nothing(monkeypatch, tmp_path: Path) -> None:
     source = tmp_path / "book.md"
@@ -308,8 +312,7 @@ def test_report_json_stdout_and_selected_chapters_preserve_original_indexes(
 
     assert result.exit_code == 0, result.output
     data = json.loads(result.output)
-    assert data["schema"] == "ttsready.report.v1"
-    assert data["output_format"] == "txt"
+    assert data["schema"] == "ttsready.report.v2"
     assert data["output_files"] == 0
     assert data["destinations"] == []
     assert [section["index"] for section in data["sections"]] == [3, 1]
@@ -337,7 +340,7 @@ def test_report_writes_only_inferred_report_file(monkeypatch, tmp_path: Path, su
         assert report_path.read_text(encoding="utf-8").startswith("# ttsready report\n")
     else:
         assert json.loads(report_path.read_text(encoding="utf-8"))["schema"] == (
-            "ttsready.report.v1"
+            "ttsready.report.v2"
         )
     assert {path.name for path in tmp_path.iterdir()} == {"book.md", report_path.name}
 
@@ -362,7 +365,7 @@ def test_report_explicit_format_allows_suffixless_path(monkeypatch, tmp_path: Pa
     )
 
     assert result.exit_code == 0, result.output
-    assert json.loads(report_path.read_text(encoding="utf-8"))["schema"] == ("ttsready.report.v1")
+    assert json.loads(report_path.read_text(encoding="utf-8"))["schema"] == ("ttsready.report.v2")
 
 
 @pytest.mark.parametrize(

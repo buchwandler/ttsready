@@ -50,6 +50,9 @@ def _cell(value: object) -> str:
 
 def markdown_report(report: ConversionReport) -> str:
     title = report.document_title or Path(report.source_path).name
+    tool_versions = ", ".join(
+        f"{name} {value}" for name, value in sorted(report.tool_versions.items())
+    )
     lines = [
         "# ttsready report",
         "",
@@ -64,8 +67,12 @@ def markdown_report(report: ConversionReport) -> str:
         f"- Metadata language: {report.metadata_language or 'not set'}",
         f"- Requested language: {report.requested_language or 'not specified'}",
         f"- Effective language: {report.effective_language}",
-        f"- Output format: {report.output_format}",
         f"- Output layout: {report.output_layout}",
+        "",
+        "## Reproducibility",
+        "",
+        f"- Source SHA-256: {report.source_sha256 or 'unavailable'}",
+        f"- Tool versions: {tool_versions or 'unavailable'}",
         "",
         "## Section selection",
         "",
@@ -143,17 +150,19 @@ def markdown_report(report: ConversionReport) -> str:
                 f"### {index:02d} {_cell(section_title)} (`{_cell(section_id)}`)",
                 "",
                 (
-                    "| Paragraph | Source | Replacement | Stages | Rule | Domain | "
-                    "Source span | Output span |"
+                    "| ID | Paragraph | Source | Replacement | Stages | Rule | "
+                    "Provenance | Domain | Source span | Output span |"
                 ),
-                "| --- | --- | --- | --- | --- | --- | --- | --- |",
+                "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
             ]
         )
         for change in changes:
             paragraph = "Title" if change.source_paragraph < 0 else str(change.source_paragraph + 1)
             lines.append(
-                f"| {paragraph} | {_cell(change.source)} | {_cell(change.replacement)} "
-                f"| {_cell(', '.join(change.stages))} | {_cell(change.rule or '')} "
+                f"| `{change.id}` | {paragraph} | {_cell(change.source)} "
+                f"| {_cell(change.replacement)} | {_cell(', '.join(change.stages))} "
+                f"| {_cell(change.rule or '')} "
+                f"| {_cell(json.dumps(change.provenance, ensure_ascii=False, sort_keys=True))} "
                 f"| {_cell(change.recognition_domain or '')} "
                 f"| {change.source_start}:{change.source_end} "
                 f"| {change.output_start}:{change.output_end} |"
@@ -211,7 +220,6 @@ def format_stats(report: ConversionReport) -> str:
         f"Metadata language: {report.metadata_language or 'not set'}",
         f"Requested language: {report.requested_language or 'not specified'}",
         f"Effective language: {report.effective_language}",
-        f"Format: {report.output_format}",
         f"Layout: {report.output_layout}",
         f"Sections: {report.selected_sections} / {report.total_sections}",
         f"Input characters: {report.input_chars}",
@@ -231,6 +239,8 @@ def format_stats(report: ConversionReport) -> str:
         f"  source spans containing digits changed: {report.spokenform.source_digit_replacements}",
         f"  warnings: {report.spokenform.warnings}",
         "",
+        "Sidecar:",
+        f"  custom overrides: {report.spokenform.stage_edits.get('custom', 0)}",
         "Splitting:",
         f"  source items split: {report.split_source_items}",
         f"  added parts: {report.added_split_parts}",

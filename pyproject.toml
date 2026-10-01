@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ttsready"
 dynamic = ["version"]
-description = "Prepare documents as TTS-ready text or SSMD."
+description = "Prepare documents as TTS-ready plain text."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 authors = [{ name = "Holger Nahrstaedt" }]
-keywords = ["tts", "text-to-speech", "epub", "pdf", "ssmd", "spokenform"]
+keywords = ["tts", "text-to-speech", "epub", "pdf", "spokenform"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
@@ -29,7 +29,7 @@ dependencies = [
   "phrasplit>=0.3.9,<1",
   "spokenform>=0.4.5,<1",
   "pypdf>=5,<7",
-  "ssmd>=0.9,<1",
+  "pyyaml>=6,<7",
   "typer>=0.20,<1",
 ]
 
@@ -40,6 +40,8 @@ dev = [
   "ruff>=0.16,<1",
   "twine>=6,<7",
 ]
+lexical = ["lexhint>=0.1.2,<0.3.0"]
+speakers = ["pyjev>=0.1,<1"]
 
 [project.scripts]
 ttsready = "ttsready.cli:app"

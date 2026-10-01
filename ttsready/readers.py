@@ -305,30 +305,9 @@ class PdfReader:
         )
 
 
-class SsmdReader:
-    name = "ssmd"
-
-    def supports(self, source: Path) -> bool:
-        return source.suffix.lower() == ".ssmd"
-
-    def load(self, source: Path) -> Document:
-        from ssmd import parse_front_matter
-
-        raw = read_text_file(source)
-        parsed = parse_front_matter(raw)
-        metadata = dict(parsed.data) if parsed.present else {}
-        metadata.pop("ssmd_version", None)
-        metadata.setdefault("title", source.stem)
-        body = parsed.body if parsed.present else raw
-        return Document(
-            source=SourceInfo(source, "ssmd", "text/markdown"),
-            sections=[Section("section-0001", body.strip())],
-            metadata=metadata,
-        )
-
 
 def default_readers() -> list[InputReader]:
-    return [TextReader(), MarkdownReader(), HtmlReader(), EpubReader(), PdfReader(), SsmdReader()]
+    return [TextReader(), MarkdownReader(), HtmlReader(), EpubReader(), PdfReader()]
 
 
 def reader_for(source: str | Path, readers: list[InputReader] | None = None) -> InputReader:

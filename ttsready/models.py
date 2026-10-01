@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
-
-OutputFormat = Literal["txt", "ssmd"]
+from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,7 +53,62 @@ class PreparedParagraph:
 
 
 @dataclass(frozen=True, slots=True)
+class SentenceContext:
+    id: str
+    index: int
+    text: str
+    start: int
+    end: int
+
+
+@dataclass(frozen=True, slots=True)
+class ContextRecord:
+    id: str
+    section_id: str
+    section_locator: str
+    section_index: int
+    source_paragraph: int
+    is_title: bool
+    source_text: str
+    spoken_text: str
+    source_sentences: tuple[SentenceContext, ...]
+    spoken_sentences: tuple[SentenceContext, ...]
+
+
+
+@dataclass(frozen=True, slots=True)
+class LexicalOccurrence:
+    context_id: str
+    start: int
+    end: int
+    sentence_id: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class LexicalFinding:
+    id: str
+    surface: str
+    normalized: str
+    count: int
+    known: bool | None
+    frequency_rank: int | None
+    frequency_count: int | None
+    reasons: tuple[str, ...]
+    occurrences: tuple[LexicalOccurrence, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class LexicalReviewReport:
+    source_path: str
+    language: str
+    source_sha256: str | None
+    tool_versions: dict[str, str]
+    findings: tuple[LexicalFinding, ...]
+    schema: str = "ttsready.lexical-review.v1"
+@dataclass(frozen=True, slots=True)
 class SpokenChange:
+    id: str
+    context_id: str
     section_id: str
     section_index: int
     source_paragraph: int
@@ -69,7 +122,7 @@ class SpokenChange:
     source_end: int
     output_start: int
     output_end: int
-
+    provenance: dict[str, Any] = field(default_factory=dict)
 
 @dataclass(slots=True)
 class SpokenformStats:
@@ -119,13 +172,16 @@ class ConversionReport:
     metadata_language: str | None
     requested_language: str | None
     effective_language: str
-    output_format: OutputFormat
     total_sections: int
     selected_sections: int
     input_chars: int
     source_paragraphs: int
     sections: list[SectionStats] = field(default_factory=list)
+
+    source_sha256: str | None = None
+    tool_versions: dict[str, str] = field(default_factory=dict)
     spokenform: SpokenformStats = field(default_factory=SpokenformStats)
+    contexts: list[ContextRecord] = field(default_factory=list)
     changes: list[SpokenChange] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     source_prepared_items: int = 0
@@ -138,7 +194,7 @@ class ConversionReport:
     output_files: int = 1
     output_layout: str = "single"
     destinations: list[str] = field(default_factory=list)
-    schema: str = "ttsready.report.v1"
+    schema: str = "ttsready.report.v2"
 
 
 @dataclass(slots=True)
@@ -146,7 +202,6 @@ class ConversionResult:
     document: Document
     paragraphs: list[PreparedParagraph]
     text: str
-    output_format: OutputFormat
     language: str
     warnings: list[str] = field(default_factory=list)
     report: ConversionReport | None = None

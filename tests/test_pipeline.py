@@ -202,3 +202,66 @@ def test_render_options_do_not_change_prepared_paragraph_count() -> None:
 
     assert len(result.paragraphs) == 2
     assert result.text == "one two\nthree\nfour\nfive\n"
+
+
+
+def test_prepare_records_duplicate_source_contexts_and_exact_sentences() -> None:
+    result = pipeline.prepare(
+        document("Repeated. Unicode café stays.\n\nRepeated. Unicode café stays.", title="Title."),
+        apply_spokenform=False,
+    )
+    report = result.report
+    assert report is not None
+
+    assert len(report.contexts) == 3
+    title, first, duplicate = report.contexts
+    assert title.is_title
+    assert title.source_paragraph == -1
+    assert first.source_text == duplicate.source_text
+    assert first.id != duplicate.id
+    assert first.section_locator == "id:section-1"
+    assert first.source_sentences[0].text == "Repeated."
+    assert first.spoken_text == first.source_text
+    for context in report.contexts:
+        for sentence in context.source_sentences:
+            assert context.source_text[sentence.start : sentence.end] == sentence.text
+        for sentence in context.spoken_sentences:
+            assert context.spoken_text[sentence.start : sentence.end] == sentence.text
+
+
+def test_spoken_change_references_context_id(monkeypatch) -> None:
+    replacement = SimpleNamespace(
+        source_start=0,
+        source_end=3,
+        output_start=0,
+        output_end=6,
+        source="Dr.",
+        replacement="Doctor",
+        stages=("abbreviations",),
+        kind="abbreviation",
+        rule="abbr:Dr.",
+        recognition_domain="medical",
+    )
+    prepared = SimpleNamespace(
+        spoken_text="Doctor Smith.",
+        warnings=(),
+        stages=(),
+        source_replacements=(replacement,),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "spokenform",
+        SimpleNamespace(prepare=lambda *args, **kwargs: prepared),
+    )
+
+    report = pipeline.prepare(document("Dr. Smith.")).report
+    assert report is not None
+    change = report.changes[0]
+    assert change.id.startswith("chg:v1:")
+    assert change.context_id == report.contexts[0].id
+    assert change.id == pipeline.change_id(
+        change.context_id,
+        source_start=0,
+        source_end=3,
+        source="Dr.",
+    )

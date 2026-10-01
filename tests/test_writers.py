@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from ttsready.models import PreparedParagraph, RenderOptions
-from ttsready.writers import render_ssmd, render_txt
+from ttsready.writers import render_txt
 
 
 def test_render_txt_separates_paragraphs() -> None:
@@ -45,17 +45,6 @@ def test_zero_breaks_join_paragraphs_before_visual_wrapping() -> None:
 
     assert render_txt(paragraphs, options=options) == "one two\nthree four\n"
 
-
-def test_render_ssmd_applies_body_layout_options() -> None:
-    paragraphs = [PreparedParagraph("one two three", "s", 0)]
-    rendered = render_ssmd(
-        paragraphs,
-        metadata={"title": "Book"},
-        language="en",
-        options=RenderOptions(line_width=7, paragraph_breaks=1),
-    )
-
-    assert "one two\nthree\n" in rendered
 
 
 def test_render_options_validate_line_width_and_break_count() -> None:

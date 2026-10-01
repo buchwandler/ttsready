@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from .models import Document, OutputFormat, PreparedParagraph, RenderOptions, Section
-from .writers import render
+from .models import Document, PreparedParagraph, RenderOptions
+from .writers import render_txt
 
 OutputLayout = Literal["single", "chapters"]
 _RESERVED_FILENAME_CHARS = set('/\\<>:"|?*')
@@ -20,7 +20,6 @@ _RESERVED_FILENAME_CHARS = set('/\\<>:"|?*')
 class OutputArtifact:
     section_id: str | None
     path: Path
-    format: OutputFormat
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,19 +51,18 @@ def plan_output(
     *,
     output: Path | None = None,
     layout: str = "single",
-    output_format: OutputFormat = "txt",
 ) -> OutputPlan:
-    """Build and validate a deterministic output artifact plan."""
+    """Build and validate a deterministic plain-text artifact plan."""
     if layout not in {"single", "chapters"}:
         raise ValueError("layout must be 'single' or 'chapters'")
-    if output_format not in {"txt", "ssmd"}:
-        raise ValueError(f"Unsupported output format: {output_format!r}")
 
     if layout == "single":
-        destination = output or document.source.path.with_suffix(f".{output_format}")
+        destination = output or document.source.path.with_suffix(".txt")
+        if destination.suffix.lower() == ".ssmd":
+            raise ValueError("SSMD output is no longer supported")
         if destination.exists() and destination.is_dir():
             raise ValueError("Single output must be a file path, not a directory")
-        artifact = OutputArtifact(None, destination, output_format)
+        artifact = OutputArtifact(None, destination)
         plan = OutputPlan("single", destination.parent, (artifact,))
     else:
         directory = output or document.source.path.with_name(
@@ -72,12 +70,10 @@ def plan_output(
         )
         if directory.exists() and not directory.is_dir():
             raise ValueError(f"Chapter output path is not a directory: {directory}")
-        extension = f".{output_format}"
         artifacts = tuple(
             OutputArtifact(
                 section_id=section.id,
-                path=directory / f"{index:03d}-{_sanitize_title(section.title)}{extension}",
-                format=output_format,
+                path=directory / f"{index:03d}-{_sanitize_title(section.title)}.txt",
             )
             for index, section in enumerate(document.sections, start=1)
         )
@@ -110,63 +106,26 @@ def paragraphs_for_section(
     return [item for item in paragraphs if item.section_id == section_id]
 
 
-def _chapter_metadata(
-    document: Document, section: Section, index: int, language: str
-) -> dict[str, object]:
-    metadata: dict[str, object] = dict(document.metadata)
-    book_title = document.metadata.get("title")
-    chapter_index = section.source_index or index
-    metadata["title"] = (
-        section.title.strip()
-        if section.title and section.title.strip()
-        else f"Chapter {chapter_index}"
-    )
-    if book_title is not None:
-        metadata["book_title"] = book_title
-    metadata["chapter_id"] = section.id
-    metadata["chapter_index"] = chapter_index
-    metadata["language"] = language
-    return metadata
-
-
 def render_artifacts(
     plan: OutputPlan,
-    document: Document,
     paragraphs: list[PreparedParagraph],
     *,
-    language: str,
     options: RenderOptions | None = None,
 ) -> tuple[tuple[OutputArtifact, str], ...]:
-    """Render every planned artifact from the single prepared paragraph list."""
+    """Render every planned TXT artifact from the prepared paragraph list."""
     if plan.layout == "single":
         artifact = plan.artifacts[0]
-        rendered = render(
-            artifact.format,
-            paragraphs,
-            metadata=document.metadata,
-            language=language,
-            options=options,
-        )
-        return ((artifact, rendered),)
+        return ((artifact, render_txt(paragraphs, options=options)),)
 
-    sections = {section.id: section for section in document.sections}
     return tuple(
         (
             artifact,
-            render(
-                artifact.format,
+            render_txt(
                 paragraphs_for_section(paragraphs, artifact.section_id or ""),
-                metadata=_chapter_metadata(
-                    document,
-                    sections[artifact.section_id],
-                    index,
-                    language,
-                ),
-                language=language,
                 options=options,
             ),
         )
-        for index, artifact in enumerate(plan.artifacts, start=1)
+        for artifact in plan.artifacts
     )
 
 

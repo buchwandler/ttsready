@@ -1,12 +1,11 @@
-"""Plain text and SSMD renderers."""
+"""Plain-text renderer."""
 
 from __future__ import annotations
 
 import textwrap
-from collections.abc import Mapping, Sequence
-from typing import Any
+from collections.abc import Sequence
 
-from .models import OutputFormat, PreparedParagraph, RenderOptions
+from .models import PreparedParagraph, RenderOptions
 
 
 def _wrap(text: str, options: RenderOptions) -> str:
@@ -35,38 +34,3 @@ def render_txt(
         separator = "\n" * options.paragraph_breaks
         body = separator.join(_wrap(item, options) for item in items)
     return body.rstrip() + "\n" if body else ""
-
-
-def render_ssmd(
-    paragraphs: Sequence[PreparedParagraph],
-    *,
-    metadata: Mapping[str, Any],
-    language: str,
-    options: RenderOptions | None = None,
-) -> str:
-    from ssmd import serialize_front_matter
-
-    options = options or RenderOptions()
-    header = dict(metadata)
-    header["ssmd_version"] = "0.9"
-    header["language"] = language
-    body = render_txt(paragraphs, options=options)
-    return serialize_front_matter(header, body)
-
-
-def render(
-    output_format: OutputFormat,
-    paragraphs: Sequence[PreparedParagraph],
-    *,
-    metadata: Mapping[str, Any],
-    language: str,
-    options: RenderOptions | None = None,
-) -> str:
-    options = options or RenderOptions()
-    if output_format == "txt":
-        return render_txt(paragraphs, options=options)
-    if output_format == "ssmd":
-        return render_ssmd(
-            paragraphs, metadata=metadata, language=language, options=options
-        )
-    raise ValueError(f"Unsupported output format: {output_format!r}")

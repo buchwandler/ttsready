@@ -29,3 +29,22 @@ def test_reader_for_rejects_unknown_extension(tmp_path: Path) -> None:
         assert "Unsupported input" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("expected unsupported input")
+
+
+
+def test_ssmd_is_not_registered_as_an_input_format(tmp_path: Path) -> None:
+    source = tmp_path / "sample.ssmd"
+    source.write_text("This format is no longer accepted.", encoding="utf-8")
+
+    try:
+        reader_for(source)
+    except Exception as exc:
+        assert "Unsupported input" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("SSMD input should be unsupported")
+
+
+
+def test_ssmd_is_not_a_runtime_dependency() -> None:
+    pyproject = Path(__file__).parents[1] / "pyproject.toml"
+    assert "ssmd>=" not in pyproject.read_text(encoding="utf-8")
