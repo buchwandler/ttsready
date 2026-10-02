@@ -63,6 +63,21 @@ def test_load_standalone_ssmd_retains_structure_and_fingerprint(tmp_path: Path) 
     assert document.content_fingerprint == load(source).content_fingerprint
 
 
+def test_load_normalizes_crlf_before_paragraph_processing(tmp_path: Path) -> None:
+    source = tmp_path / "paragraphs.ssmd.md"
+    source.write_bytes(
+        ssmd("Sample", "First paragraph.\n\nSecond paragraph.")
+        .replace("\n", "\r\n")
+        .encode("utf-8")
+    )
+
+    document = load(source)
+    result = prepare(document, apply_spokenform=False, include_titles=False)
+
+    assert document.sections[0].text == "First paragraph.\n\nSecond paragraph."
+    assert result.text == "First paragraph.\n\nSecond paragraph.\n"
+
+
 def test_load_book_bundle_uses_manifest_chapter_order_and_hashes(tmp_path: Path) -> None:
     source = tmp_path / "sample.ssmdbook"
     write_book_bundle(book(), source, format="directory")
@@ -151,7 +166,7 @@ def test_ssmdconvert_output_is_ttsready_canonical_input(tmp_path: Path) -> None:
 
     conversion = convert_ssmd(source, title="Chapter", language="en-US")
     canonical_path = tmp_path / "chapter.ssmd.md"
-    canonical_path.write_text(conversion.ssmd, encoding="utf-8")
+    canonical_path.write_text(conversion.ssmd, encoding="utf-8", newline="")
 
     document = load(canonical_path)
     result = prepare(document, apply_spokenform=False, include_titles=False)

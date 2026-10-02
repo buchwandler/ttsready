@@ -18,6 +18,7 @@ def _sha256(data: bytes) -> str:
 
 
 def _parse_ssmd(source: str, *, label: str):
+    source = source.replace("\r\n", "\n").replace("\r", "\n")
     issues = ssmd_library.lint(source, profile="ssmd-core", dialect="0.9")
     errors = [issue for issue in issues if issue.severity == "error"]
     if errors:
