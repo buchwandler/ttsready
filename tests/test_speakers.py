@@ -7,10 +7,16 @@ from types import SimpleNamespace
 import pytest
 
 from ttsready.identifiers import speaker_decision_id
+from ttsready.input import load as load_ssmd
 from ttsready.models import ContextRecord
 from ttsready.pipeline import prepare
-from ttsready.readers import load
-from ttsready.sidecar import Sidecar, SidecarError, load_sidecar, save_sidecar
+from ttsready.sidecar import (
+    Sidecar,
+    SidecarError,
+    canonical_source_identity,
+    load_sidecar,
+    save_sidecar,
+)
 from ttsready.speakers import (
     SpeakerCandidate,
     SpeakerDecision,
@@ -58,9 +64,9 @@ class FakeJev:
 
 
 def _contexts(tmp_path: Path, text: str) -> tuple[ContextRecord, ...]:
-    source = tmp_path / "book.txt"
-    source.write_text(text, encoding="utf-8")
-    report = prepare(load(source), apply_spokenform=False).report
+    source = tmp_path / "book.ssmd.md"
+    source.write_text(f'---\nssmd_version: "0.9"\nlanguage: en\n---\n\n{text}', encoding="utf-8")
+    report = prepare(load_ssmd(source), apply_spokenform=False).report
     assert report is not None
     return tuple(report.contexts)
 
@@ -72,9 +78,9 @@ def _candidates() -> tuple[SpeakerCandidate, ...]:
     )
 
 
-def _sidecar() -> Sidecar:
+def _sidecar(source: dict[str, str] | None = None) -> Sidecar:
     return Sidecar(
-        source={"format": "text"},
+        source=source or {"format": "ssmd", "content_fingerprint": "0" * 64},
         lexicon=(),
         characters=(
             {"id": "alice", "display_name": "Alice", "aliases": ["Al"]},
@@ -139,6 +145,14 @@ def test_jev_adapter_passes_only_logical_candidates_and_unknown(tmp_path: Path) 
     assert set(jev.choices) == {"speaker:alice", "speaker:bob", "__ttsready_unknown__"}
     assert jev.state["candidate_ids"] == ["alice", "bob"]
     assert "voice" not in str(jev.state).casefold()
+    unknown_provider = JevSpeakerProvider(jev=FakeJev(value="__ttsready_unknown__"))
+    unknown = unknown_provider.attribute(utterance, candidates=_candidates(), context=contexts)
+    assert unknown.speaker_id is None
+    assert unknown.status == "suggested"
+    with pytest.raises(ValueError, match="outside the supplied candidates"):
+        JevSpeakerProvider(jev=FakeJev(value="tts:provider-voice")).attribute(
+            utterance, candidates=_candidates(), context=contexts
+        )
 
 
 def test_manual_acceptance_and_suggestion_persistence_are_explicit(tmp_path: Path) -> None:
@@ -152,7 +166,13 @@ def test_manual_acceptance_and_suggestion_persistence_are_explicit(tmp_path: Pat
         candidates=candidates,
         context=contexts,
     )[0]
-    sidecar = _sidecar()
+    source = tmp_path / "review.ssmd.md"
+    source.write_text(
+        chr(10).join(["---", 'ssmd_version: "0.9"', "---", "Reviewed speaker decisions.", ""]),
+        encoding="utf-8",
+    )
+    document = load_ssmd(source)
+    sidecar = _sidecar(canonical_source_identity(document))
 
     suggested = persist_speaker_decisions(sidecar, (suggestion,))
     assert suggested.speaker_annotations == ()
@@ -176,10 +196,16 @@ def test_manual_acceptance_and_suggestion_persistence_are_explicit(tmp_path: Pat
 
     manual = manual_speaker_decision(utterances[1], speaker_id="alice", candidates=candidates)
     updated = write_speaker_decisions(path, sidecar, (accepted, manual))
-    loaded = load_sidecar(path, source_path=tmp_path / "book.txt", source_format="text")
+    loaded = load_sidecar(path, document=document)
 
     assert [item["status"] for item in loaded.speaker_annotations] == ["accepted", "manual"]
     assert [item["speaker"] for item in loaded.speaker_annotations] == ["bob", "alice"]
+    assert loaded.speaker_annotations[0]["provenance"] == {
+        "provider": "fake",
+        "model": "fake-v1",
+        "confidence": 0.88,
+    }
+    assert loaded.characters[0]["id"] == "alice"
     assert all("voice" not in item for item in loaded.speaker_annotations)
     assert updated.speaker_annotations == loaded.speaker_annotations
 

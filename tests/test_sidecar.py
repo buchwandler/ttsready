@@ -8,14 +8,14 @@ import yaml
 from typer.testing import CliRunner
 
 from ttsready.cli import app
-from ttsready.identifiers import file_sha256
+from ttsready.input import load
 from ttsready.overrides import OverrideConflictError, find_overrides
 from ttsready.pipeline import prepare
-from ttsready.readers import load
 from ttsready.sidecar import (
     SCHEMA,
     SidecarError,
     SpeechOverride,
+    canonical_source_identity,
     load_sidecar,
     save_sidecar,
 )
@@ -26,9 +26,16 @@ runner = CliRunner()
 def _sidecar_data(source: Path, *, lexicon: list[dict] | None = None) -> dict:
     return {
         "schema": SCHEMA,
-        "source": {"format": "text", "file_sha256": file_sha256(source)},
+        "source": canonical_source_identity(load(source)),
         "lexicon": lexicon or [],
     }
+
+
+def _write_ssmd(source: Path, text: str) -> None:
+    source.write_text(
+        chr(10).join(["---", 'ssmd_version: "0.9"', "---", text, ""]),
+        encoding="utf-8",
+    )
 
 
 def _write_sidecar(path: Path, data: dict) -> None:
@@ -55,8 +62,9 @@ def _override(
 
 
 def test_load_sidecar_validates_source_and_generates_stable_ids(tmp_path: Path) -> None:
-    source = tmp_path / "book.txt"
-    source.write_text("H2O", encoding="utf-8")
+    source = tmp_path / "book.ssmd.md"
+    _write_ssmd(source, "H2O")
+    document = load(source)
     path = tmp_path / "book.ttsready.yaml"
     data = _sidecar_data(
         source,
@@ -64,44 +72,46 @@ def test_load_sidecar_validates_source_and_generates_stable_ids(tmp_path: Path) 
     )
     _write_sidecar(path, data)
 
-    sidecar = load_sidecar(path, source_path=source, source_format="text")
-    reloaded = load_sidecar(path, source_path=source, source_format="text")
+    sidecar = load_sidecar(path, document=document)
+    reloaded = load_sidecar(path, document=document)
 
     assert sidecar.lexicon[0].id.startswith("ovr:v1:")
     assert sidecar.lexicon[0].id == reloaded.lexicon[0].id
     assert sidecar.lexicon[0].provenance == {"note": "reviewed"}
     saved = tmp_path / "saved.yaml"
     save_sidecar(saved, sidecar)
-    assert load_sidecar(saved, source_path=source, source_format="text") == sidecar
+    assert load_sidecar(saved, document=document) == sidecar
 
 
 def test_load_sidecar_rejects_schema_format_and_stale_fingerprint(tmp_path: Path) -> None:
-    source = tmp_path / "book.txt"
-    source.write_text("original", encoding="utf-8")
+    source = tmp_path / "book.ssmd.md"
+    _write_ssmd(source, "original")
+    document = load(source)
     path = tmp_path / "sidecar.yaml"
     data = _sidecar_data(source)
 
-    data["schema"] = "ttsready.sidecar.v2"
+    data["schema"] = "ttsready.sidecar.v1"
     _write_sidecar(path, data)
     with pytest.raises(SidecarError, match="Unsupported sidecar schema"):
-        load_sidecar(path, source_path=source, source_format="text")
+        load_sidecar(path, document=document)
 
     data = _sidecar_data(source)
-    data["source"]["format"] = "epub"
+    data["source"]["format"] = "ssmdbook"
     _write_sidecar(path, data)
     with pytest.raises(SidecarError, match="source format"):
-        load_sidecar(path, source_path=source, source_format="text")
+        load_sidecar(path, document=document)
 
     data = _sidecar_data(source)
     _write_sidecar(path, data)
-    source.write_text("changed", encoding="utf-8")
-    with pytest.raises(SidecarError, match="SHA-256"):
-        load_sidecar(path, source_path=source, source_format="text")
+    _write_ssmd(source, "changed")
+    with pytest.raises(SidecarError, match="content fingerprint"):
+        load_sidecar(path, document=load(source))
 
 
 def test_load_sidecar_rejects_invalid_override_scope(tmp_path: Path) -> None:
-    source = tmp_path / "book.txt"
-    source.write_text("Hello", encoding="utf-8")
+    source = tmp_path / "book.ssmd.md"
+    _write_ssmd(source, "Hello")
+    document = load(source)
     path = tmp_path / "sidecar.yaml"
     data = _sidecar_data(
         source,
@@ -110,12 +120,13 @@ def test_load_sidecar_rejects_invalid_override_scope(tmp_path: Path) -> None:
     _write_sidecar(path, data)
 
     with pytest.raises(SidecarError, match="requires section_id or section_locator"):
-        load_sidecar(path, source_path=source, source_format="text")
+        load_sidecar(path, document=document)
 
 
 def test_sidecar_preserves_logical_characters_and_reviewed_speakers(tmp_path: Path) -> None:
-    source = tmp_path / "book.txt"
-    source.write_text("Hello", encoding="utf-8")
+    source = tmp_path / "book.ssmd.md"
+    _write_ssmd(source, "Hello")
+    document = load(source)
     path = tmp_path / "sidecar.yaml"
     data = _sidecar_data(source)
     data["characters"] = [{"id": "alice", "display_name": "Alice", "aliases": ["Al"]}]
@@ -129,7 +140,7 @@ def test_sidecar_preserves_logical_characters_and_reviewed_speakers(tmp_path: Pa
     ]
     _write_sidecar(path, data)
 
-    sidecar = load_sidecar(path, source_path=source, source_format="text")
+    sidecar = load_sidecar(path, document=document)
 
     assert sidecar.characters[0]["aliases"] == ["Al"]
     assert sidecar.speaker_annotations[0]["status"] == "manual"
@@ -137,12 +148,12 @@ def test_sidecar_preserves_logical_characters_and_reviewed_speakers(tmp_path: Pa
     data["speaker_annotations"][0]["speaker"] = "ghost"
     _write_sidecar(path, data)
     with pytest.raises(SidecarError, match="unknown logical character"):
-        load_sidecar(path, source_path=source, source_format="text")
+        load_sidecar(path, document=document)
     data["speaker_annotations"][0]["speaker"] = "alice"
     data["speaker_annotations"][0]["status"] = "suggested"
     _write_sidecar(path, data)
     with pytest.raises(SidecarError, match="status must be accepted or manual"):
-        load_sidecar(path, source_path=source, source_format="text")
+        load_sidecar(path, document=document)
 
 
 def test_override_precedence_longer_match_and_conflict_detection() -> None:
@@ -209,14 +220,14 @@ def test_override_precedence_longer_match_and_conflict_detection() -> None:
 
 
 def test_custom_override_protects_structured_text_and_composes_offsets(tmp_path: Path) -> None:
-    source = tmp_path / "book.txt"
-    source.write_text("H2O and 3.", encoding="utf-8")
+    source = tmp_path / "book.ssmd.md"
+    _write_ssmd(source, "H2O and 3.")
     sidecar_path = tmp_path / "sidecar.yaml"
     _write_sidecar(
         sidecar_path,
         _sidecar_data(source, lexicon=[{"surface": "H2O", "spoken": "water"}]),
     )
-    sidecar = load_sidecar(sidecar_path, source_path=source, source_format="text")
+    sidecar = load_sidecar(sidecar_path, document=load(source))
 
     result = prepare(load(source), sidecar=sidecar)
 
@@ -231,9 +242,13 @@ def test_custom_override_protects_structured_text_and_composes_offsets(tmp_path:
     assert result.report.spokenform.stage_edits["custom"] == 1
 
 
-def test_all_preparation_commands_accept_and_apply_config(tmp_path: Path) -> None:
-    source = tmp_path / "book.txt"
-    source.write_text("H2O and 3.", encoding="utf-8")
+def test_all_preparation_commands_accept_and_apply_config(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("TTSREADY_CACHE_DIR", str(tmp_path / "cache"))
+    source = tmp_path / "book.ssmd.md"
+    source.write_text(
+        chr(10).join(["---", 'ssmd_version: "0.9"', "---", "H2O and 3.", ""]),
+        encoding="utf-8",
+    )
     config = tmp_path / "sidecar.yaml"
     lexicon = [
         {
@@ -242,7 +257,9 @@ def test_all_preparation_commands_accept_and_apply_config(tmp_path: Path) -> Non
             "provenance": {"finding_id": "lex:v1:reviewed"},
         }
     ]
-    _write_sidecar(config, _sidecar_data(source, lexicon=lexicon))
+    sidecar_data = _sidecar_data(source, lexicon=lexicon)
+    sidecar_data["source"]["format"] = "ssmd"
+    _write_sidecar(config, sidecar_data)
 
     output = tmp_path / "output.txt"
     converted = runner.invoke(
@@ -267,7 +284,7 @@ def test_all_preparation_commands_accept_and_apply_config(tmp_path: Path) -> Non
 
     context = runner.invoke(
         app,
-        ["context", str(source), custom["id"], "--config", str(config)],
+        ["context", str(source), custom["id"]],
     )
     assert context.exit_code == 0, context.output
     assert "H2O" in context.output

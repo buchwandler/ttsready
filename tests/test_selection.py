@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
 from ttsready.models import Document, Section, SourceInfo
-from ttsready.readers import EpubReader
 from ttsready.selection import format_section_listing, parse_section_range, select_document_sections
 
 
@@ -52,33 +49,3 @@ def test_format_section_listing_includes_order_hierarchy_counts_and_fallback_tit
     assert "1      1          35           2  One" in listing
     assert "2      2          13           1    Interlude" in listing
     assert "3      1           0           0  Section 3" in listing
-
-
-def test_epub_reader_preserves_chapter_hierarchy(monkeypatch, tmp_path: Path) -> None:
-    chapter = SimpleNamespace(
-        id="chapter-2",
-        text="Nested chapter text.",
-        title="Interlude",
-        href="text/chapter2.xhtml",
-        parent_id="chapter-1",
-        level=2,
-    )
-    metadata = SimpleNamespace(
-        title="Book", authors=[], language=None, publisher=None, identifier=None
-    )
-
-    class FakeParser:
-        def __init__(self, source: str) -> None:
-            assert source.endswith("book.epub")
-
-        def get_chapter_documents(self):
-            return [chapter]
-
-        def get_metadata(self):
-            return metadata
-
-    monkeypatch.setitem(sys.modules, "epub2text", SimpleNamespace(EPUBParser=FakeParser))
-    document = EpubReader().load(tmp_path / "book.epub")
-
-    assert document.sections[0].parent_id == "chapter-1"
-    assert document.sections[0].level == 2

@@ -26,6 +26,8 @@ def make_document(source: Path) -> Document:
 
 def prepare_source(monkeypatch, source: Path) -> Document:
     source.write_text("source", encoding="utf-8")
+    cache_path = source.parent.parent / f"{source.parent.name}.cache"
+    monkeypatch.setenv("TTSREADY_CACHE_DIR", str(cache_path))
     document = make_document(source)
     monkeypatch.setattr(cli, "load", lambda _: document)
     return document
@@ -35,7 +37,18 @@ def test_root_help_lists_commands_without_source_argument() -> None:
     result = runner.invoke(cli.app, ["--help"])
 
     assert result.exit_code == 0, result.output
-    for command in ("convert", "chapters", "preflight", "report", "context"):
+    for command in (
+        "convert",
+        "export",
+        "preview",
+        "chapters",
+        "preflight",
+        "report",
+        "lock",
+        "verify",
+        "freeze",
+        "context",
+    ):
         assert command in result.output
     assert "--version" in result.output
     assert "Arguments:" not in result.output
@@ -48,7 +61,18 @@ def test_root_without_args_shows_help() -> None:
     result = runner.invoke(cli.app, [])
 
     assert result.exit_code == 2
-    for command in ("convert", "chapters", "preflight", "report", "context"):
+    for command in (
+        "convert",
+        "export",
+        "preview",
+        "chapters",
+        "preflight",
+        "report",
+        "lock",
+        "verify",
+        "freeze",
+        "context",
+    ):
         assert command in result.output
 
 

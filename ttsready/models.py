@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ssmd import ParseStructureResult
+
 
 @dataclass(frozen=True, slots=True)
 class RenderOptions:
@@ -36,6 +38,10 @@ class Section:
     level: int = 1
     source_index: int | None = None
 
+    ssmd: str | None = None
+    structure: ParseStructureResult | None = None
+    chapter_sha256: str | None = None
+
 
 @dataclass(slots=True)
 class Document:
@@ -43,15 +49,45 @@ class Document:
     sections: list[Section]
     metadata: dict[str, Any] = field(default_factory=dict)
     original_section_count: int | None = None
+    source_sha256: str | None = None
+    content_fingerprint: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
-class PreparedParagraph:
+class NormalizationProfile:
+    language: str
+    use_spacy: bool = False
+    symbol_mode: str = "none"
+    normalize_unicode: bool = False
+    normalize_whitespace: bool = False
+    strip_outer_whitespace: bool = False
+    collapse_horizontal_whitespace: bool = False
+    normalize_line_whitespace: bool = False
+    collapse_blank_lines: bool = False
+    generic_acronym_mode: str = "known_only"
+    sequence_fallback_mode: str = "spell"
+    expand_structured: bool = True
+    expand_numbers: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedSegment:
     text: str
-    section_id: str
+    chapter_id: str
     source_paragraph: int
     part: int = 0
     is_title: bool = False
+    language: str = "en"
+    voice: str | None = None
+    source_context_id: str | None = None
+    render_group: str | None = None
+
+    @property
+    def section_id(self) -> str:
+        return self.chapter_id
+
+
+PreparedParagraph = PreparedSegment
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,6 +199,7 @@ class SectionStats:
     level: int
     input_chars: int
     source_paragraphs: int
+    chapter_sha256: str | None = None
     prepared_paragraphs: int = 0
     spokenform_changes: int = 0
     output_chars: int = 0
@@ -184,6 +221,14 @@ class ConversionReport:
 
     source_sha256: str | None = None
     tool_versions: dict[str, str] = field(default_factory=dict)
+    content_fingerprint: str | None = None
+    analysis_id: str | None = None
+    normalization_profile: dict[str, Any] = field(default_factory=dict)
+    normalization_options_sha256: str | None = None
+    pronunciation_profile_sha256: str | None = None
+    normalization_profile_sha256: str | None = None
+    runtime_fingerprint: str | None = None
+    prepared_output_sha256: str | None = None
     spokenform: SpokenformStats = field(default_factory=SpokenformStats)
     contexts: list[ContextRecord] = field(default_factory=list)
     changes: list[SpokenChange] = field(default_factory=list)
@@ -201,6 +246,14 @@ class ConversionReport:
     schema: str = "ttsready.report.v2"
 
 
+@dataclass(frozen=True, slots=True)
+class TTSPlan:
+    document: Document
+    segments: tuple[PreparedSegment, ...]
+    language: str
+    report: ConversionReport
+
+
 @dataclass(slots=True)
 class ConversionResult:
     document: Document
@@ -209,3 +262,4 @@ class ConversionResult:
     language: str
     warnings: list[str] = field(default_factory=list)
     report: ConversionReport | None = None
+    plan: TTSPlan | None = None

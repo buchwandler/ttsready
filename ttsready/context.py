@@ -44,6 +44,8 @@ def context_payload(report: ConversionReport, identifier: str) -> dict[str, Any]
         "language": report.effective_language,
         "section_title": section.title if section else None,
         "tool_versions": dict(report.tool_versions),
+        "analysis_id": report.analysis_id,
+        "content_fingerprint": report.content_fingerprint,
         "source_sentence_text": _sentence_text(source_sentences, context.source_text),
         "spoken_sentence_text": _sentence_text(spoken_sentences, context.spoken_text),
         "source_sentences": [asdict(sentence) for sentence in source_sentences],

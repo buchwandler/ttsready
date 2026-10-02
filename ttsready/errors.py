@@ -6,4 +6,4 @@ class TTSReadyError(Exception):
 
 
 class UnsupportedInputError(TTSReadyError):
-    """Raised when no reader supports an input file."""
+    """Raised when a path is not a canonical SSMD input."""

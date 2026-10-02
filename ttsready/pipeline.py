@@ -2,31 +2,38 @@
 
 from __future__ import annotations
 
+import platform
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
+from ssmd import AnnotationSpan
+
+from .errors import TTSReadyError
 from .identifiers import change_id, file_sha256, section_locator, stable_id, text_sha256
 from .identifiers import context_id as make_context_id
+from .input import load
 from .models import (
     ContextRecord,
     ConversionReport,
     ConversionResult,
     Document,
-    PreparedParagraph,
+    NormalizationProfile,
+    PreparedSegment,
     RenderOptions,
     Section,
     SectionStats,
     SentenceContext,
     SpokenChange,
     SpokenformStats,
+    TTSPlan,
 )
 from .overrides import apply_overrides, find_overrides
-from .readers import load
+from .planning import render_preview
+from .reproducibility import normalization_fingerprints, runtime_fingerprint
 from .sidecar import Sidecar
-from .writers import render_txt
 
 _PARAGRAPH_BREAK = re.compile(r"\n[ \t]*\n+")
 _INLINE_LINE_BREAK = re.compile(r"[ \t]*\n[ \t]*")
@@ -62,6 +69,28 @@ class SourceItem:
     source_paragraph: int
     is_title: bool
     text: str
+    ssmd_annotations: tuple[AnnotationSpan, ...] = ()
+    language: str | None = None
+    voice_spans: tuple[tuple[int, int, str], ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class _SSMDReplacement:
+    source_start: int
+    source_end: int
+    source: str
+    replacement: str
+
+
+def normalization_profile(language: str) -> NormalizationProfile:
+    return NormalizationProfile(language=language)
+
+
+def _authoritative_annotation(annotation: AnnotationSpan) -> bool:
+    return bool(
+        {"sub", "as", "say-as", "ph", "ipa", "sampa", "phonemes"}.intersection(annotation.attrs)
+        or annotation.attrs.get("tag") in {"say-as", "phoneme"}
+    )
 
 
 def _spoken(
@@ -75,7 +104,10 @@ def _spoken(
     section_index: int,
     source_paragraph: int,
     sidecar: Sidecar | None,
+    ssmd_annotations: tuple[AnnotationSpan, ...] = (),
 ) -> SpokenOutcome:
+    authoritative = tuple(item for item in ssmd_annotations if _authoritative_annotation(item))
+    protected_spans = tuple((item.char_start, item.char_end) for item in authoritative)
     overrides = sidecar.lexicon if sidecar else ()
     matches = find_overrides(
         text,
@@ -84,21 +116,26 @@ def _spoken(
         section_id=section_id,
         section_locator=section_locator_value,
     )
+    matches = tuple(
+        match
+        for match in matches
+        if not any(match.start < end and start < match.end for start, end in protected_spans)
+    )
+
     if enabled:
         from spokenform import prepare as prepare_spokenform
 
         prepared = prepare_spokenform(
             text,
-            language=language,
-            use_spacy=False,
-            protected_spans=tuple((match.start, match.end) for match in matches),
+            **asdict(normalization_profile(language)),
+            protected_spans=(*protected_spans, *((match.start, match.end) for match in matches)),
         )
         stage_edit_counts: dict[str, int] = {}
         for stage in prepared.stages:
             stage_edit_counts[stage.name] = stage_edit_counts.get(stage.name, 0) + len(
                 stage.mapped_edits
             )
-        replacements = prepared.source_replacements
+        replacements = tuple(prepared.source_replacements)
         base_changes = tuple(
             SpokenChange(
                 id=change_id(
@@ -125,15 +162,74 @@ def _spoken(
             for replacement in replacements
         )
         warnings = tuple(prepared.warnings)
-        output_text = prepared.spoken_text.strip()
+        output_text = prepared.spoken_text
     else:
         replacements = ()
         base_changes = ()
         stage_edit_counts = {}
         warnings = ()
-        output_text = text.strip()
+        output_text = text
 
-    spoken_text, applied = apply_overrides(output_text, matches, replacements)
+    authoritative_replacements = tuple(
+        _SSMDReplacement(
+            source_start=item.char_start,
+            source_end=item.char_end,
+            source=text[item.char_start : item.char_end],
+            replacement=item.attrs["sub"],
+        )
+        for item in authoritative
+        if "sub" in item.attrs
+    )
+    authoritative_changes: list[SpokenChange] = []
+    mapped_substitutions: list[tuple[_SSMDReplacement, int]] = []
+    for substitution in authoritative_replacements:
+        apply_output_start = substitution.source_start + sum(
+            len(item.replacement) - len(item.source)
+            for item in replacements
+            if item.source_end <= substitution.source_start
+        )
+        output_start = apply_output_start + sum(
+            len(item.replacement) - len(item.source)
+            for item in authoritative_replacements
+            if item.source_end <= substitution.source_start
+        )
+        mapped_substitutions.append((substitution, apply_output_start))
+        authoritative_changes.append(
+            SpokenChange(
+                id=change_id(
+                    context_id,
+                    source_start=substitution.source_start,
+                    source_end=substitution.source_end,
+                    source=substitution.source,
+                ),
+                context_id=context_id,
+                section_id=section_id,
+                section_index=section_index,
+                source_paragraph=source_paragraph,
+                source=substitution.source,
+                replacement=substitution.replacement,
+                stages=("ssmd.sub",),
+                kind="normalization",
+                rule=None,
+                recognition_domain=None,
+                source_start=substitution.source_start,
+                source_end=substitution.source_end,
+                output_start=output_start,
+                output_end=output_start + len(substitution.replacement),
+                provenance={"origin": "ssmd.sub", "status": "authoritative"},
+            )
+        )
+    for substitution, output_start in reversed(mapped_substitutions):
+        output_end = output_start + len(substitution.source)
+        output_text = (
+            output_text[:output_start] + substitution.replacement + output_text[output_end:]
+        )
+    base_changes = (*base_changes, *authoritative_changes)
+    if authoritative_changes:
+        stage_edit_counts["ssmd.sub"] = len(authoritative_changes)
+
+    all_replacements = (*replacements, *authoritative_replacements)
+    spoken_text, applied = apply_overrides(output_text, matches, all_replacements)
     custom_changes = tuple(
         SpokenChange(
             id=change_id(
@@ -162,29 +258,31 @@ def _spoken(
     )
     if applied:
         stage_edit_counts["custom"] = len(applied)
-        shifted_changes = []
-        for change in base_changes:
-            delta = sum(
-                len(item.match.override.spoken) - (item.match.end - item.match.start)
-                for item in applied
-                if item.match.end <= change.source_start
+        base_changes = tuple(
+            replace(
+                change,
+                output_start=change.output_start
+                + sum(
+                    len(item.match.override.spoken) - (item.match.end - item.match.start)
+                    for item in applied
+                    if item.match.end <= change.source_start
+                ),
+                output_end=change.output_end
+                + sum(
+                    len(item.match.override.spoken) - (item.match.end - item.match.start)
+                    for item in applied
+                    if item.match.end <= change.source_start
+                ),
             )
-            shifted_changes.append(
-                replace(
-                    change,
-                    output_start=change.output_start + delta,
-                    output_end=change.output_end + delta,
-                )
-            )
-        base_changes = tuple(shifted_changes)
+            for change in base_changes
+        )
 
-    changes = (*base_changes, *custom_changes)
     return SpokenOutcome(
         text=spoken_text,
         warnings=warnings,
-        changed=spoken_text != text.strip(),
+        changed=spoken_text != text,
         stage_edit_counts=stage_edit_counts,
-        changes=changes,
+        changes=(*base_changes, *custom_changes),
     )
 
 
@@ -223,7 +321,8 @@ def _sentence_contexts(
 
 def _tool_versions() -> dict[str, str]:
     versions: dict[str, str] = {}
-    for distribution in ("ttsready", "spokenform", "phrasplit", "epub2text"):
+    versions["python"] = platform.python_version()
+    for distribution in ("ttsready", "ssmd", "ssmdconvert", "spokenform", "phrasplit"):
         try:
             versions[distribution] = version(distribution)
         except PackageNotFoundError:
@@ -250,32 +349,197 @@ def _split_oversized(text: str, *, max_chars: int | None, language: str) -> list
     return [part.strip() for part in parts if part.strip()]
 
 
+def _voice_output_ranges(
+    voice_spans: tuple[tuple[int, int, str], ...],
+    changes: tuple[SpokenChange, ...],
+    output_text: str,
+) -> tuple[tuple[int, int, str], ...]:
+    if not voice_spans:
+        return ()
+
+    def priority(change: SpokenChange) -> int:
+        if "ssmd.sub" in change.stages:
+            return 0
+        return 1 if "custom" in change.stages else 2
+
+    selected: list[SpokenChange] = []
+    for change in sorted(
+        changes,
+        key=lambda item: (item.source_start, priority(item), item.source_end),
+    ):
+        overlapping = [
+            item
+            for item in selected
+            if item.source_start < change.source_end and change.source_start < item.source_end
+        ]
+        if not overlapping:
+            selected.append(change)
+        elif priority(change) < min(priority(item) for item in overlapping):
+            selected = [item for item in selected if item not in overlapping]
+            selected.append(change)
+
+    def map_offset(offset: int) -> int:
+        for change in selected:
+            if offset == change.source_start:
+                return change.output_start
+            if offset == change.source_end:
+                return change.output_end
+            if change.source_start < offset < change.source_end:
+                raise TTSReadyError("A voice boundary crosses a speech replacement span")
+        return offset + sum(
+            change.output_end - change.output_start - (change.source_end - change.source_start)
+            for change in selected
+            if change.source_end < offset
+        )
+
+    output_ranges = tuple(
+        (map_offset(start), map_offset(end), voice) for start, end, voice in voice_spans
+    )
+    if any(start < 0 or end > len(output_text) or start >= end for start, end, _ in output_ranges):
+        raise TTSReadyError("A logical voice span no longer maps to prepared speech text")
+    ordered = sorted(output_ranges)
+    for left, right in zip(ordered, ordered[1:], strict=False):
+        if left[1] > right[0] and left[2] != right[2]:
+            raise TTSReadyError("Overlapping SSMD voice annotations assign conflicting speakers")
+    return output_ranges
+
+
+def _voice_pieces(
+    text: str, voice_ranges: tuple[tuple[int, int, str], ...]
+) -> list[tuple[str, str | None]]:
+    if not voice_ranges:
+        return [(text, None)]
+    boundaries = sorted(
+        {0, len(text), *(point for start, end, _ in voice_ranges for point in (start, end))}
+    )
+    pieces: list[tuple[str, str | None]] = []
+    for start, end in zip(boundaries, boundaries[1:], strict=False):
+        if start == end:
+            continue
+        active = {
+            voice
+            for voice_start, voice_end, voice in voice_ranges
+            if voice_start <= start and end <= voice_end
+        }
+        if len(active) > 1:
+            raise TTSReadyError("Overlapping SSMD voice annotations assign conflicting speakers")
+        pieces.append((text[start:end], next(iter(active), None)))
+    return pieces
+
+
+def _paragraph_ranges(text: str) -> list[tuple[int, int]]:
+    ranges: list[tuple[int, int]] = []
+    start = 0
+    for match in _PARAGRAPH_BREAK.finditer(text):
+        end = match.start()
+        while start < end and text[start].isspace():
+            start += 1
+        while end > start and text[end - 1].isspace():
+            end -= 1
+        if start < end:
+            ranges.append((start, end))
+        start = match.end()
+    end = len(text)
+    while start < end and text[start].isspace():
+        start += 1
+    while end > start and text[end - 1].isspace():
+        end -= 1
+    if start < end:
+        ranges.append((start, end))
+    return ranges
+
+
 def _iter_section_inputs(document: Document, include_titles: bool) -> Iterable[SourceItem]:
     for output_index, section in enumerate(document.sections, start=1):
         section_index = section.source_index or output_index
         if include_titles and section.title and section.title.strip():
             yield SourceItem(section, section_index, -1, True, section.title.strip())
-        for index, paragraph in enumerate(source_paragraphs(section.text)):
-            yield SourceItem(section, section_index, index, False, paragraph)
+
+        if section.structure is None:
+            for index, paragraph in enumerate(source_paragraphs(section.text)):
+                yield SourceItem(section, section_index, index, False, paragraph)
+            continue
+
+        annotations = section.structure.effective_annotations or section.structure.annotations
+        for index, (start, end) in enumerate(_paragraph_ranges(section.text)):
+            paragraph = section.text[start:end]
+            local_annotations: list[AnnotationSpan] = []
+            local_voice_spans = []
+            for annotation in annotations:
+                voice = annotation.attrs.get("voice")
+                if (
+                    not isinstance(voice, str)
+                    or annotation.char_start >= end
+                    or annotation.char_end <= start
+                ):
+                    continue
+                local_voice_spans.append(
+                    (
+                        max(annotation.char_start, start) - start,
+                        min(annotation.char_end, end) - start,
+                        voice,
+                    )
+                )
+            for annotation in annotations:
+                if not _authoritative_annotation(annotation):
+                    continue
+                if annotation.char_start >= end or annotation.char_end <= start:
+                    continue
+                if annotation.char_start < start or annotation.char_end > end:
+                    raise TTSReadyError(
+                        "An authoritative SSMD annotation crosses a paragraph boundary"
+                    )
+                local_annotations.append(
+                    AnnotationSpan(
+                        char_start=annotation.char_start - start,
+                        char_end=annotation.char_end - start,
+                        attrs=dict(annotation.attrs),
+                        kind=annotation.kind,
+                    )
+                )
+            language_annotations = [
+                annotation
+                for annotation in annotations
+                if annotation.language
+                and annotation.char_start <= start
+                and annotation.char_end >= end
+            ]
+            local_language = (
+                min(language_annotations, key=lambda item: item.char_end - item.char_start).language
+                if language_annotations
+                else None
+            )
+            yield SourceItem(
+                section,
+                section_index,
+                index,
+                False,
+                paragraph,
+                tuple(local_annotations),
+                local_language,
+                tuple(local_voice_spans),
+            )
 
 
-def prepare(
+def prepare_tts_plan(
     document: Document,
     *,
     language: str | None = None,
     max_paragraph_chars: int | None = 1000,
     apply_spokenform: bool = True,
     include_titles: bool = True,
-    render_options: RenderOptions | None = None,
     sidecar: Sidecar | None = None,
-) -> ConversionResult:
-    """Prepare a loaded document for TTS and render it."""
+) -> TTSPlan:
+    """Normalize SSMD content and build a structured TTS plan without rendering it."""
     if max_paragraph_chars is not None and max_paragraph_chars < 1:
         raise ValueError("max_paragraph_chars must be at least 1")
 
     metadata_language = document.metadata.get("language")
     selected_language = str(language or metadata_language or "en")
     requested_language = str(language) if language is not None else None
+    profile_options = asdict(normalization_profile(selected_language))
+    profile_hashes = normalization_fingerprints(selected_language, profile_options, sidecar)
+    tool_versions = _tool_versions()
     section_stats = [
         SectionStats(
             section_id=section.id,
@@ -283,6 +547,7 @@ def prepare(
             title=section.title,
             level=section.level,
             input_chars=len(section.text),
+            chapter_sha256=section.chapter_sha256 or text_sha256(section.ssmd or section.text),
             source_paragraphs=len(source_paragraphs(section.text)),
         )
         for index, section in enumerate(document.sections, start=1)
@@ -302,10 +567,16 @@ def prepare(
         input_chars=sum(len(section.text) for section in document.sections),
         source_paragraphs=sum(item.source_paragraphs for item in section_stats),
         sections=section_stats,
-        source_sha256=file_sha256(str(document.source.path)),
-        tool_versions=_tool_versions(),
+        source_sha256=document.source_sha256 or file_sha256(str(document.source.path)),
+        content_fingerprint=document.content_fingerprint,
+        normalization_profile=profile_options,
+        normalization_options_sha256=profile_hashes["options_sha256"],
+        pronunciation_profile_sha256=profile_hashes["pronunciation_profile_sha256"],
+        normalization_profile_sha256=profile_hashes["profile_sha256"],
+        runtime_fingerprint=runtime_fingerprint(tool_versions),
+        tool_versions=tool_versions,
     )
-    prepared: list[PreparedParagraph] = []
+    prepared: list[PreparedSegment] = []
     spokenform_stats: SpokenformStats = report.spokenform
 
     duplicate_ordinals: dict[tuple[str, str, str], int] = {}
@@ -331,13 +602,14 @@ def prepare(
         outcome = _spoken(
             raw,
             context_id=context_key,
-            language=selected_language,
+            language=source_item.language or selected_language,
             enabled=apply_spokenform,
             section_id=section_id,
             section_index=section_index,
             source_paragraph=source_index,
             section_locator_value=locator,
             sidecar=sidecar,
+            ssmd_annotations=source_item.ssmd_annotations,
         )
         report.contexts.append(
             ContextRecord(
@@ -350,10 +622,16 @@ def prepare(
                 source_text=raw,
                 spoken_text=outcome.text,
                 source_sentences=_sentence_contexts(
-                    context_key, raw, kind="source", language=selected_language
+                    context_key,
+                    raw,
+                    kind="source",
+                    language=source_item.language or selected_language,
                 ),
                 spoken_sentences=_sentence_contexts(
-                    context_key, outcome.text, kind="spoken", language=selected_language
+                    context_key,
+                    outcome.text,
+                    kind="spoken",
+                    language=source_item.language or selected_language,
                 ),
             )
         )
@@ -384,44 +662,97 @@ def prepare(
         spokenform_stats.source_replacements += len(outcome.changes)
 
         report.source_prepared_items += 1
+        voice_ranges = _voice_output_ranges(
+            source_item.voice_spans,
+            outcome.changes,
+            outcome.text,
+        )
         parts = _split_oversized(
             outcome.text,
             max_chars=max_paragraph_chars,
-            language=selected_language,
+            language=source_item.language or selected_language,
         )
         if len(parts) > 1:
             report.split_source_items += 1
         report.added_split_parts += max(0, len(parts) - 1)
+        part_search_start = 0
         for part_index, part in enumerate(parts):
-            prepared.append(
-                PreparedParagraph(
-                    text=part,
-                    section_id=section_id,
-                    source_paragraph=source_index,
-                    part=part_index,
-                    is_title=is_title,
+            if voice_ranges:
+                part_start = outcome.text.find(part, part_search_start)
+                if part_start < 0:
+                    raise TTSReadyError("Could not map a prepared chunk back to its voice spans")
+                part_end = part_start + len(part)
+                part_search_start = part_end
+                clipped_voice_ranges = tuple(
+                    (max(start, part_start) - part_start, min(end, part_end) - part_start, voice)
+                    for start, end, voice in voice_ranges
+                    if start < part_end and part_start < end
                 )
-            )
-            report.prepared_paragraphs += 1
-            report.max_prepared_paragraph_chars = max(
-                report.max_prepared_paragraph_chars, len(part)
-            )
-            section_stats_by_id[section_id].prepared_paragraphs += 1
-            section_stats_by_id[section_id].output_chars += len(part)
+                voice_pieces = _voice_pieces(part, clipped_voice_ranges)
+            else:
+                voice_pieces = [(part, None)]
+            render_group = f"{context_key}:{part_index}"
+            for text, voice in voice_pieces:
+                prepared.append(
+                    PreparedSegment(
+                        text=text,
+                        chapter_id=section_id,
+                        source_paragraph=source_index,
+                        part=part_index,
+                        is_title=is_title,
+                        language=source_item.language or selected_language,
+                        voice=voice,
+                        source_context_id=context_key,
+                        render_group=render_group,
+                    )
+                )
+                report.prepared_paragraphs += 1
+                report.max_prepared_paragraph_chars = max(
+                    report.max_prepared_paragraph_chars, len(text)
+                )
+                section_stats_by_id[section_id].prepared_paragraphs += 1
+                section_stats_by_id[section_id].output_chars += len(text)
 
-    rendered = render_txt(
-        prepared,
-        options=render_options or RenderOptions(),
+    return TTSPlan(
+        document=document,
+        segments=tuple(prepared),
+        language=selected_language,
+        report=report,
     )
+
+
+def prepare(
+    document: Document,
+    *,
+    language: str | None = None,
+    max_paragraph_chars: int | None = 1000,
+    apply_spokenform: bool = True,
+    include_titles: bool = True,
+    render_options: RenderOptions | None = None,
+    sidecar: Sidecar | None = None,
+) -> ConversionResult:
+    """Build a structured speech plan and render its plain-text preview."""
+    plan = prepare_tts_plan(
+        document,
+        language=language,
+        max_paragraph_chars=max_paragraph_chars,
+        apply_spokenform=apply_spokenform,
+        include_titles=include_titles,
+        sidecar=sidecar,
+    )
+    rendered = render_preview(plan, options=render_options)
+    report = plan.report
     report.output_chars = len(rendered)
     report.output_lines = len(rendered.splitlines())
+    report.prepared_output_sha256 = text_sha256(rendered)
     return ConversionResult(
-        document=document,
-        paragraphs=prepared,
+        document=plan.document,
+        paragraphs=list(plan.segments),
         text=rendered,
-        language=selected_language,
+        language=plan.language,
         warnings=report.warnings,
         report=report,
+        plan=plan,
     )
 
 
@@ -435,7 +766,7 @@ def convert(
     render_options: RenderOptions | None = None,
     sidecar: Sidecar | None = None,
 ) -> ConversionResult:
-    """Load, prepare, and render one supported document."""
+    """Load canonical SSMD, prepare speech, and render plain text."""
     document = load(source)
     return prepare(
         document,

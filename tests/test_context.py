@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import spokenform
 from typer.testing import CliRunner
 
 import ttsready.cli as cli
@@ -116,52 +117,73 @@ def test_context_unknown_id_raises_clear_error() -> None:
         raise AssertionError("unknown context ID should fail")
 
 
-def test_context_cli_json_and_paragraph_output(monkeypatch, tmp_path: Path) -> None:
-    source = tmp_path / "book.epub"
-    source.write_bytes(b"source")
-    monkeypatch.setattr(cli, "_prepare_report", lambda **kwargs: make_report())
-
-    result = runner.invoke(
-        cli.app,
-        ["context", str(source), "chg:v1:0123456789abcdefabcd", "--json"],
+def _create_cached_report(tmp_path: Path, monkeypatch) -> tuple[Path, str]:
+    source = tmp_path / "book.ssmd.md"
+    source.write_text(
+        chr(10).join(["---", 'ssmd_version: "0.9"', "---", "He met Dr. Smith. Then left.", ""]),
+        encoding="utf-8",
     )
+    monkeypatch.setenv("TTSREADY_CACHE_DIR", str(tmp_path / "cache"))
+    result = runner.invoke(cli.app, ["report", str(source), "--format", "json", "--no-titles"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    change = next(item for item in payload["changes"] if item["source"] == "Dr.")
+    return source, change["id"]
+
+
+def test_context_cli_reads_cached_analysis_without_spokenform(monkeypatch, tmp_path: Path) -> None:
+    source, identifier = _create_cached_report(tmp_path, monkeypatch)
+
+    def fail_prepare(*args, **kwargs):
+        raise AssertionError("context must not rerun Spokenform")
+
+    monkeypatch.setattr(spokenform, "prepare", fail_prepare)
+    result = runner.invoke(cli.app, ["context", str(source), identifier, "--json"])
+
     assert result.exit_code == 0, result.output
     data = json.loads(result.output)
     assert data["source_sentence_text"] == "He met Dr. Smith."
+    assert data["spoken_sentence_text"] == "He met Doctor Smith."
+    assert data["analysis_id"].startswith("ana:v1:")
     assert "context" not in data
 
-    paragraph = runner.invoke(
-        cli.app,
-        ["context", str(source), "chg:v1:0123456789abcdefabcd", "--paragraph"],
-    )
+    paragraph = runner.invoke(cli.app, ["context", str(source), identifier, "--paragraph"])
     assert paragraph.exit_code == 0, paragraph.output
     assert "Source paragraph:\nHe met Dr. Smith. Then left." in paragraph.output
 
 
 def test_context_cli_bug_report_contains_versions_and_sentence(monkeypatch, tmp_path: Path) -> None:
-    source = tmp_path / "book.epub"
-    source.write_bytes(b"source")
-    monkeypatch.setattr(cli, "_prepare_report", lambda **kwargs: make_report())
+    source, identifier = _create_cached_report(tmp_path, monkeypatch)
 
-    result = runner.invoke(
-        cli.app,
-        ["context", str(source), "chg:v1:0123456789abcdefabcd", "--bug-report"],
-    )
+    result = runner.invoke(cli.app, ["context", str(source), identifier, "--bug-report"])
 
     assert result.exit_code == 0, result.output
-    assert "- ttsready: 1.2.3" in result.output
-    assert "- spokenform: 0.4.5" in result.output
+    assert "- ttsready:" in result.output
+    assert "- spokenform:" in result.output
     assert "He met Dr. Smith." in result.output
     assert "He met Doctor Smith." in result.output
     assert "<fill in expected spoken form>" in result.output
 
 
 def test_context_cli_unknown_id_exits_nonzero(monkeypatch, tmp_path: Path) -> None:
-    source = tmp_path / "book.epub"
-    source.write_bytes(b"source")
-    monkeypatch.setattr(cli, "_prepare_report", lambda **kwargs: make_report())
+    source, _ = _create_cached_report(tmp_path, monkeypatch)
 
     result = runner.invoke(cli.app, ["context", str(source), "chg:v1:missing"])
 
     assert result.exit_code == 1
-    assert "No Spokenform change found" in result.output
+    assert "No cached analysis contains ID" in result.output
+
+
+def test_context_cli_missing_cache_is_actionable(monkeypatch, tmp_path: Path) -> None:
+    source = tmp_path / "book.ssmd.md"
+    source.write_text(
+        chr(10).join(["---", 'ssmd_version: "0.9"', "---", "No report yet.", ""]),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("TTSREADY_CACHE_DIR", str(tmp_path / "cache"))
+
+    result = runner.invoke(cli.app, ["context", str(source), "chg:v1:missing"])
+
+    assert result.exit_code == 1
+    assert "No cached analysis is available" in result.output
+    assert "Run `ttsready report" in result.output

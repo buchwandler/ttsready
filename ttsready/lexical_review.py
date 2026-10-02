@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 from spokenform.evidence import LexicalEvidenceProvider, validate_provider
 
 from .identifiers import stable_id
+from .input import load
 from .models import (
     ContextRecord,
     ConversionReport,
@@ -21,7 +22,6 @@ from .models import (
     LexicalReviewReport,
 )
 from .pipeline import prepare
-from .readers import load
 
 if TYPE_CHECKING:
     from .models import Document
@@ -293,7 +293,7 @@ def review_source(
     source: str | Path,
     **options: Any,
 ) -> LexicalReviewReport:
-    """Load a supported source and review uncommon words."""
+    """Load canonical SSMD and review uncommon words."""
     return review_document(load(source), **options)
 
 

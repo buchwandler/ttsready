@@ -8,6 +8,7 @@ from typer.testing import CliRunner
 
 from ttsready.cli import app
 from ttsready.context import render_context_json
+from ttsready.input import load
 from ttsready.lexical_review import (
     format_lexical_context,
     lexical_context_payload,
@@ -15,7 +16,6 @@ from ttsready.lexical_review import (
     review_document,
 )
 from ttsready.pipeline import prepare
-from ttsready.readers import load
 
 runner = CliRunner()
 
@@ -47,8 +47,11 @@ class FakeProvider:
 
 
 def _source(tmp_path: Path, text: str) -> Path:
-    source = tmp_path / "book.txt"
-    source.write_text(text, encoding="utf-8")
+    source = tmp_path / "book.ssmd.md"
+    source.write_text(
+        chr(10).join(["---", 'ssmd_version: "0.9"', "language: en", "---", text, ""]),
+        encoding="utf-8",
+    )
     return source
 
 
@@ -162,8 +165,13 @@ def test_lexical_context_resolves_finding_and_preserves_sentence_and_paragraph(
     assert json.loads(render_context_json(payload))["lexical_finding"]["id"] == finding.id
 
 
-def test_review_cli_outputs_json_and_context_accepts_lexical_id(tmp_path: Path) -> None:
+def test_review_cli_outputs_json_and_context_accepts_lexical_id(
+    tmp_path: Path, monkeypatch
+) -> None:
     source = _source(tmp_path, "We met Siobhan after lunch.")
+    monkeypatch.setenv("TTSREADY_CACHE_DIR", str(tmp_path / "cache"))
+    cached = runner.invoke(app, ["report", str(source), "--no-titles"])
+    assert cached.exit_code == 0, cached.output
     reviewed = runner.invoke(app, ["review", str(source), "--format", "json"])
 
     assert reviewed.exit_code == 0, reviewed.output

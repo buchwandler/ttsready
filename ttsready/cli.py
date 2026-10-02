@@ -11,8 +11,10 @@ import typer
 from spokenform.language import base_language
 
 from . import __version__
+from .analysis import AnalysisCacheError, load_cached_report, prepare_cached_report
 from .context import context_payload, format_bug_report, format_context, render_context_json
 from .errors import TTSReadyError
+from .input import load
 from .lexical_review import (
     DEFAULT_MAX_FREQUENCY_RANK,
     format_lexical_context,
@@ -31,7 +33,8 @@ from .output import (
     write_artifacts,
 )
 from .pipeline import prepare as prepare_document
-from .readers import load
+from .pipeline import prepare_tts_plan
+from .planning import render_preview
 from .reporting import (
     format_preflight,
     format_stats,
@@ -62,6 +65,10 @@ class Layout(str, Enum):
     chapters = "chapters"
 
 
+class ExportFormat(str, Enum):
+    txt = "txt"
+
+
 class ReportFormat(str, Enum):
     md = "md"
     json = "json"
@@ -74,7 +81,7 @@ class SpeakerReviewFormat(str, Enum):
 
 SourceArgument = Annotated[
     Path,
-    typer.Argument(exists=True, file_okay=True, dir_okay=False, readable=True, metavar="SOURCE"),
+    typer.Argument(exists=True, file_okay=True, dir_okay=True, readable=True, metavar="SOURCE"),
 ]
 ChangeIdArgument = Annotated[str, typer.Argument(metavar="ID")]
 ChaptersOption = Annotated[
@@ -87,6 +94,17 @@ ChaptersOption = Annotated[
     ),
 ]
 OutputOption = Annotated[Path | None, typer.Option("-o", "--output", help="Output path.")]
+LockFileOption = Annotated[
+    Path,
+    typer.Option(
+        "--lock",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        metavar="LOCK",
+    ),
+]
 ConfigOption = Annotated[Path | None, typer.Option("--config", help="YAML customization sidecar.")]
 SpeakerConfigOption = Annotated[
     Path,
@@ -102,6 +120,10 @@ SpeakerConfigOption = Annotated[
 SpeakerFormatOption = Annotated[
     SpeakerReviewFormat,
     typer.Option("--format", help="Speaker review format."),
+]
+ExportFormatOption = Annotated[
+    ExportFormat,
+    typer.Option("--format", help="Plain-text export format."),
 ]
 UseJevOption = Annotated[
     bool,
@@ -166,7 +188,7 @@ app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
     rich_markup_mode=None,
-    help="Prepare documents for text-to-speech.",
+    help="Analyze canonical SSMD and prepare TTS exports.",
 )
 
 
@@ -209,11 +231,7 @@ def _load_sidecar_for_document(path: Path | None, document: Document) -> Sidecar
     if path is None:
         return None
     try:
-        return load_sidecar(
-            path,
-            source_path=document.source.path,
-            source_format=document.source.format,
-        )
+        return load_sidecar(path, document=document)
     except SidecarError as exc:
         raise typer.BadParameter(str(exc), param_hint="--config") from exc
 
@@ -296,27 +314,26 @@ def _prepare_report(
     max_paragraph_chars: int,
     spokenform: bool,
     titles: bool,
+    refresh: bool = False,
 ) -> ConversionReport:
     document = _load_selected_document(source, chapters)
     sidecar = _load_sidecar_for_document(config, document)
     try:
-        result = prepare_document(
+        report = prepare_cached_report(
             document,
             language=language,
             max_paragraph_chars=max_paragraph_chars,
             apply_spokenform=spokenform,
             include_titles=titles,
-            render_options=RenderOptions(),
             sidecar=sidecar,
+            force_refresh=refresh,
         )
     except Exception as exc:
         _fail_runtime(exc)
-    if result.report is None:
-        _fail_runtime(ValueError("Conversion did not produce a report"))
-    result.report.output_layout = "single"
-    result.report.output_files = 0
-    result.report.destinations = []
-    return result.report
+    report.output_layout = "single"
+    report.output_files = 0
+    report.destinations = []
+    return report
 
 
 def _resolve_report_format(output: Path | None, explicit: ReportFormat | None) -> str:
@@ -372,7 +389,7 @@ def convert(
         bool, typer.Option("--stats", help="Print detailed conversion statistics.")
     ] = False,
 ) -> None:
-    """Convert SOURCE to TTS-ready plain text."""
+    """Render canonical SSMD SOURCE as TTS-ready plain text."""
     prepared = _prepare_for_output(
         source=source,
         config=config,
@@ -408,6 +425,75 @@ def convert(
         typer.echo(
             f"Warnings: {len(prepared.result.warnings)} (run `ttsready report SOURCE` for details)"
         )
+
+
+@app.command("export")
+def export_command(
+    source: SourceArgument,
+    format_: ExportFormatOption,
+    output: OutputOption = None,
+    layout: LayoutOption = Layout.single,
+    chapters: ChaptersOption = None,
+    config: ConfigOption = None,
+    language: LanguageOption = None,
+    max_paragraph_chars: MaxParagraphCharsOption = 1000,
+    spokenform: SpokenformOption = True,
+    titles: TitlesOption = True,
+    line_width: LineWidthOption = None,
+    paragraph_breaks: ParagraphBreaksOption = 2,
+) -> None:
+    """Export the prepared TTS plan as plain text."""
+    del format_
+    prepared = _prepare_for_output(
+        source=source,
+        config=config,
+        chapters=chapters,
+        output=output,
+        layout=layout,
+        language=language,
+        max_paragraph_chars=max_paragraph_chars,
+        spokenform=spokenform,
+        titles=titles,
+        line_width=line_width,
+        paragraph_breaks=paragraph_breaks,
+    )
+    try:
+        write_artifacts(prepared.plan, prepared.rendered)
+    except Exception as exc:
+        _fail_runtime(exc)
+    destination = (
+        prepared.plan.root
+        if prepared.plan.layout == "chapters"
+        else prepared.plan.artifacts[0].path
+    )
+    typer.echo(f"TXT exported: {destination}")
+
+
+@app.command("preview")
+def preview_command(
+    source: SourceArgument,
+    chapters: ChaptersOption = None,
+    config: ConfigOption = None,
+    language: LanguageOption = None,
+    max_paragraph_chars: MaxParagraphCharsOption = 1000,
+    spokenform: SpokenformOption = True,
+    titles: TitlesOption = True,
+) -> None:
+    """Print the prepared speech preview without writing an output file."""
+    document = _load_selected_document(source, chapters)
+    sidecar = _load_sidecar_for_document(config, document)
+    try:
+        plan = prepare_tts_plan(
+            document,
+            language=language,
+            max_paragraph_chars=max_paragraph_chars,
+            apply_spokenform=spokenform,
+            include_titles=titles,
+            sidecar=sidecar,
+        )
+        typer.echo(render_preview(plan), nl=False)
+    except Exception as exc:
+        _fail_runtime(exc)
 
 
 @app.command("chapters")
@@ -466,6 +552,10 @@ def report_command(
     titles: TitlesOption = True,
     output: OutputOption = None,
     format_: ReportFormatOption = None,
+    refresh: Annotated[
+        bool,
+        typer.Option("--refresh", help="Recompute all chapter analyses instead of reusing cache."),
+    ] = False,
 ) -> None:
     """Show or write a spokenform/conversion report without TTS output."""
     report = _prepare_report(
@@ -476,6 +566,7 @@ def report_command(
         max_paragraph_chars=max_paragraph_chars,
         spokenform=spokenform,
         titles=titles,
+        refresh=refresh,
     )
     output_format = _resolve_report_format(output, format_)
     if output is None:
@@ -497,16 +588,92 @@ def report_command(
     typer.echo(f"Report written: {output}")
 
 
+@app.command("lock")
+def lock_command(
+    source: SourceArgument,
+    output: OutputOption = None,
+    config: ConfigOption = None,
+    language: LanguageOption = None,
+) -> None:
+    """Create a strict reproducibility lock for canonical SSMD input."""
+    from .reproducibility import create_lock_record, write_lock
+
+    try:
+        document = _load_selected_document(source, None)
+        sidecar = _load_sidecar_for_document(config, document)
+        prepared = prepare_document(document, language=language, sidecar=sidecar)
+        if prepared.report is None:
+            raise ValueError("Lock creation did not produce a preparation report")
+        lock = create_lock_record(
+            document,
+            prepared.report,
+            prepared.text,
+            sidecar=sidecar,
+        )
+        target = (
+            output.expanduser().resolve()
+            if output is not None
+            else source.expanduser().resolve().with_name(f"{source.name}.ttsready.lock.json")
+        )
+        if target == source.resolve():
+            raise ValueError("Lock output must not overwrite the SSMD input")
+        write_lock(target, lock)
+    except Exception as exc:
+        _fail_runtime(exc)
+    typer.echo(f"Lock written: {target}")
+
+
+@app.command("verify")
+def verify_command(
+    source: SourceArgument,
+    lock_path: LockFileOption,
+    config: ConfigOption = None,
+    language: LanguageOption = None,
+) -> None:
+    """Strictly verify SSMD content, runtime, profile, and prepared output against a lock."""
+    from .reproducibility import create_lock_record, verify_lock
+
+    try:
+        document = _load_selected_document(source, None)
+        sidecar = _load_sidecar_for_document(config, document)
+        prepared = prepare_document(document, language=language, sidecar=sidecar)
+        if prepared.report is None:
+            raise ValueError("Lock verification did not produce a preparation report")
+        current = create_lock_record(
+            document,
+            prepared.report,
+            prepared.text,
+            sidecar=sidecar,
+        )
+        verify_lock(lock_path, current)
+    except Exception as exc:
+        _fail_runtime(exc)
+    typer.echo(f"Lock verified: {lock_path}")
+
+
+@app.command("freeze")
+def freeze_command(
+    source: SourceArgument,
+    output: Annotated[Path, typer.Option("-o", "--output", help="Distinct frozen SSMD output.")],
+    config: ConfigOption = None,
+    language: LanguageOption = None,
+) -> None:
+    """Materialize current speech transformations into a separate SSMD artifact."""
+    from .freeze import freeze_ssmd
+
+    document = _load_selected_document(source, None)
+    sidecar = _load_sidecar_for_document(config, document)
+    try:
+        target = freeze_ssmd(source, output, sidecar=sidecar, language=language)
+    except Exception as exc:
+        _fail_runtime(exc)
+    typer.echo(f"Frozen SSMD written: {target}")
+
+
 @app.command("context")
 def context_command(
     source: SourceArgument,
     change_id: ChangeIdArgument,
-    chapters: ChaptersOption = None,
-    config: ConfigOption = None,
-    language: LanguageOption = None,
-    max_paragraph_chars: MaxParagraphCharsOption = 1000,
-    spokenform: SpokenformOption = True,
-    titles: TitlesOption = True,
     as_json: Annotated[
         bool, typer.Option("--json", help="Emit machine-readable context JSON.")
     ] = False,
@@ -517,18 +684,13 @@ def context_command(
         bool, typer.Option("--paragraph", help="Include the full source paragraph.")
     ] = False,
 ) -> None:
-    """Show source context for a change or lexical review ID."""
+    """Show cached source context for a change or lexical review ID."""
     if as_json and bug_report:
         raise typer.BadParameter("--json and --bug-report cannot be combined")
-    report = _prepare_report(
-        source=source,
-        config=config,
-        chapters=chapters,
-        language=language,
-        max_paragraph_chars=max_paragraph_chars,
-        spokenform=spokenform,
-        titles=titles,
-    )
+    try:
+        report = load_cached_report(source, change_id)
+    except AnalysisCacheError as exc:
+        _fail_runtime(exc)
     is_lexical = False
     try:
         payload = context_payload(report, change_id)
@@ -637,6 +799,28 @@ def review_command(
     typer.echo(f"Review written: {output}")
 
 
+@app.command("override")
+def override_command(
+    source: SourceArgument,
+    change_id: ChangeIdArgument,
+    spoken: Annotated[str, typer.Option("--spoken", help="Reviewed spoken replacement.")],
+    output: OutputOption = None,
+    write: Annotated[
+        bool, typer.Option("--write", help="Replace the source SSMD input in place.")
+    ] = False,
+) -> None:
+    """Materialize a reviewed change as an SSMD sub annotation."""
+    if write and output is not None:
+        raise typer.BadParameter("--output cannot be combined with --write", param_hint="--output")
+    try:
+        from .materialization import materialize_change
+
+        target = materialize_change(source, change_id, spoken, output=output, overwrite=write)
+    except Exception as exc:
+        _fail_runtime(exc)
+    typer.echo(f"SSMD substitution materialized: {target}")
+
+
 @app.command("speakers")
 def speakers_command(
     source: SourceArgument,
@@ -706,3 +890,36 @@ def speaker_set_command(
     except Exception as exc:
         _fail_runtime(exc)
     typer.echo(f"Saved manual speaker assignment: {utterance_id} -> {speaker_id}")
+
+
+@app.command("speaker-materialize")
+def speaker_materialize_command(
+    source: SourceArgument,
+    config: SpeakerConfigOption,
+    utterance_id: UtteranceOption,
+    output: OutputOption = None,
+    write: Annotated[
+        bool, typer.Option("--write", help="Replace the source SSMD input in place.")
+    ] = False,
+) -> None:
+    """Materialize an accepted/manual speaker decision as SSMD voice markup."""
+    if write and output is not None:
+        raise typer.BadParameter("--output cannot be combined with --write", param_hint="--output")
+    document = _load_selected_document(source, None)
+    sidecar = _load_sidecar_for_document(config, document)
+    if sidecar is None:
+        _fail_runtime(ValueError("A sidecar is required for speaker materialization"))
+    try:
+        from .materialization import materialize_speaker_decision
+
+        target = materialize_speaker_decision(
+            source,
+            utterance_id,
+            sidecar,
+            config,
+            output=output,
+            overwrite=write,
+        )
+    except Exception as exc:
+        _fail_runtime(exc)
+    typer.echo(f"SSMD voice annotation materialized: {utterance_id} -> {target}")

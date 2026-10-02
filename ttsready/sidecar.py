@@ -8,9 +8,10 @@ from typing import Any
 
 import yaml
 
-from .identifiers import file_sha256, stable_id
+from .identifiers import stable_id
+from .models import Document
 
-SCHEMA = "ttsready.sidecar.v1"
+SCHEMA = "ttsready.sidecar.v2"
 
 
 class SidecarError(ValueError):
@@ -191,12 +192,33 @@ def _validate_speaker_references(
             )
 
 
-def load_sidecar(
-    path: str | Path,
-    *,
-    source_path: str | Path,
-    source_format: str,
-) -> Sidecar:
+def canonical_source_identity(document: Document) -> dict[str, str]:
+    if document.source.format not in {"ssmd", "ssmdbook"}:
+        raise SidecarError("Sidecars must be anchored to canonical SSMD or SSMD book inputs")
+    if document.content_fingerprint is None:
+        raise SidecarError("Canonical input has no SSMD content fingerprint")
+    return {
+        "format": document.source.format,
+        "content_fingerprint": document.content_fingerprint,
+    }
+
+
+def _validate_source_identity(value: Any) -> dict[str, str]:
+    source = _mapping(value, "source")
+    if set(source) != {"format", "content_fingerprint"}:
+        raise SidecarError("Sidecar source must contain only format and content_fingerprint")
+    source_format = _string(source.get("format"), "source.format")
+    if source_format not in {"ssmd", "ssmdbook"}:
+        raise SidecarError("Sidecar source format must be ssmd or ssmdbook")
+    fingerprint = _string(source.get("content_fingerprint"), "source.content_fingerprint")
+    if len(fingerprint) != 64 or any(
+        character not in "0123456789abcdef" for character in fingerprint
+    ):
+        raise SidecarError("Sidecar source content_fingerprint must be a lowercase SHA-256 digest")
+    return {"format": source_format, "content_fingerprint": fingerprint}
+
+
+def load_sidecar(path: str | Path, *, document: Document) -> Sidecar:
     sidecar_path = Path(path)
     try:
         data = yaml.safe_load(sidecar_path.read_text(encoding="utf-8"))
@@ -209,20 +231,15 @@ def load_sidecar(
     if unknown:
         raise SidecarError(f"Unknown sidecar fields: {', '.join(sorted(unknown))}")
 
-    source = _mapping(data.get("source", {}), "source")
-    expected_format = source.get("format")
-    if expected_format is not None and expected_format != source_format:
+    source = _validate_source_identity(data.get("source", {}))
+    expected_source = canonical_source_identity(document)
+    if source["format"] != expected_source["format"]:
         raise SidecarError(
-            f"Sidecar source format {expected_format!r} does not match {source_format!r}"
+            f"Sidecar source format {source['format']!r} does not match "
+            f"{expected_source['format']!r}"
         )
-    expected_hash = source.get("file_sha256")
-    if expected_hash is not None:
-        expected_hash = _string(expected_hash, "source.file_sha256")
-        actual_hash = file_sha256(Path(source_path))
-        if actual_hash is None:
-            raise SidecarError(f"Could not verify sidecar fingerprint for {source_path}")
-        if actual_hash.casefold() != expected_hash.casefold():
-            raise SidecarError("Sidecar source SHA-256 does not match the input file")
+    if source["content_fingerprint"] != expected_source["content_fingerprint"]:
+        raise SidecarError("Sidecar SSMD content fingerprint does not match the input")
 
     lexicon_values = _list(data.get("lexicon"), "lexicon")
     lexicon = tuple(_parse_override(item, index) for index, item in enumerate(lexicon_values))
@@ -230,7 +247,7 @@ def load_sidecar(
     speaker_annotations = _parse_speaker_annotations(data.get("speaker_annotations"))
     _validate_speaker_references(characters, speaker_annotations)
     return Sidecar(
-        source=dict(source),
+        source=source,
         lexicon=lexicon,
         characters=characters,
         speaker_annotations=speaker_annotations,
@@ -241,9 +258,10 @@ def save_sidecar(path: str | Path, sidecar: Sidecar) -> None:
     characters = _parse_characters(list(sidecar.characters))
     speaker_annotations = _parse_speaker_annotations(list(sidecar.speaker_annotations))
     _validate_speaker_references(characters, speaker_annotations)
+    source = _validate_source_identity(sidecar.source)
     data = {
         "schema": SCHEMA,
-        "source": sidecar.source,
+        "source": source,
         "lexicon": [
             {
                 "id": item.id,
