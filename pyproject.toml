@@ -8,7 +8,7 @@ dynamic = ["version"]
 description = "Analyze canonical SSMD and materialize reviewed TTS semantics."
 readme = "README.md"
 requires-python = ">=3.10"
-license = "MIT"
+license = "Apache-2.0"
 authors = [{ name = "Holger Nahrstaedt" }]
 keywords = ["tts", "text-to-speech", "ssmd", "spokenform", "reproducibility"]
 classifiers = [

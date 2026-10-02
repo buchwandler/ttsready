@@ -2,6 +2,8 @@
 
 `ttsready` analyzes canonical SSMD 0.9 documents and `.ssmdbook` bundles, reviews speech decisions, and can materialize approved changes back into SSMD. It does not ingest EPUB, PDF, Markdown, HTML, or plain-text source files directly, and it does not generate audio.
 
+Python 3.10 or newer is required. The CI matrix targets Python 3.10 through 3.14. See the [documentation](docs/index.md) for the installation guide, quickstart, and workflows.
+
 The interchange boundary is the SSMD artifact:
 
 ```text
@@ -41,6 +43,20 @@ python -m pip install 'ttsready[lexical]'
 python -m pip install 'ttsready[speakers]'
 ```
 
+## Quickstart
+
+From the repository root, run the included example through the main CLI workflows:
+
+```bash
+python -m pip install -e .
+ttsready preflight examples/basic.ssmd.md
+ttsready report examples/basic.ssmd.md
+ttsready preview examples/basic.ssmd.md
+ttsready export examples/basic.ssmd.md --format txt -o /tmp/basic.txt
+```
+
+The same input can be loaded with the [Python API](docs/python-api.md). See [examples/basic_preview.py](examples/basic_preview.py) for a complete runnable example.
+
 ## Review workflow
 
 Create a report to inspect Spokenform candidates and their SSMD source spans:
@@ -79,8 +95,8 @@ ttsready speaker-materialize novel.ssmdbook --config novel.ttsready.yaml \
 Create and verify a strict lock for canonical content, runtime, normalization profile, and prepared output. `freeze` writes a separate SSMD artifact with the selected automatic transformations materialized:
 
 ```bash
-ttsready lock novel.ssmdbook
-ttsready verify novel.ssmdbook novel.ssmdbook.ttsready.lock.json
+ttsready lock novel.ssmdbook -o novel.ssmdbook.ttsready.lock.json
+ttsready verify novel.ssmdbook --lock novel.ssmdbook.ttsready.lock.json
 ttsready freeze novel.ssmdbook -o novel.frozen.ssmdbook
 ```
 
@@ -119,3 +135,7 @@ document = load_ssmd(ssmd_text, section_id="chapter-0001")
 - `ttsready` reviews canonical SSMD and writes explicit reviewed semantics such as `sub` and logical `voice` annotations into SSMD.
 - Downstream tools consume canonical or reviewed SSMD. Tools exchange content through SSMD documents, not through a `ttsready` runtime integration API.
 - The existing `ssmdconvert.speech` API remains available for compatibility. It is separate from the `ttsready` review and materialization workflow.
+
+## License
+
+`ttsready` is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for the full text.

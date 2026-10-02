@@ -5,7 +5,6 @@ dedupe = true
 metadata = false
 respect_gitignore = true
 exclude = ["*/.venv/*", "context_ttsready.*"]
-gitignore_allow = ["ttsready/_version.py"]
 include = [
   "**/*.py",
   "**/*.toml",

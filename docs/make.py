@@ -1,87 +1,68 @@
 #!/usr/bin/env python
-"""
-Script to build documentation for ttsready.
+"""Build Sphinx documentation for ttsready.
 
-This script builds the Sphinx documentation for the ttsready package.
-It can be run using:
-    python docs/make.py [option]
+Run ``python docs/make.py [target]`` from any working directory.
 
-Options:
-    clean   - clean the build directory
-    html    - build HTML documentation
-    dirhtml - build HTML documentation with directory structure
-    all     - build all documentation formats
-    help    - show help message
+Targets include ``clean``, ``html``, ``dirhtml``, ``latex``, ``all``, and
+``help``.
 """
 
-import os
 import shutil
 import subprocess
 import sys
+from pathlib import Path
+
+DOCS_DIR = Path(__file__).resolve().parent
+BUILD_DIR = DOCS_DIR / "_build"
+VALID_TARGETS = {
+    "html",
+    "dirhtml",
+    "latex",
+    "latexpdf",
+    "text",
+    "man",
+    "changes",
+    "linkcheck",
+    "doctest",
+    "all",
+}
+
+
+def build(target):
+    """Run Sphinx for one builder, treating warnings as errors."""
+    output_dir = BUILD_DIR / target
+    command = ["sphinx-build", "-W", "-b", target, str(DOCS_DIR), str(output_dir)]
+    print(f"Building {target} documentation...")
+    subprocess.run(command, check=True)
 
 
 def main():
-    """Run the script."""
-    sphinx_build = "sphinx-build"
-
-    # Determine if we're being run from docs/ or from project root
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    if os.path.basename(script_dir) == "docs":
-        # Running from docs directory
-        build_dir = "_build"
-        source_dir = "."
-    else:
-        # Running from project root
-        build_dir = os.path.join("docs", "_build")
-        source_dir = "docs"
-
+    """Run the requested documentation target."""
     target = "html" if len(sys.argv) < 2 else sys.argv[1]
 
     if target == "clean":
-        if os.path.exists(build_dir):
-            print(f"Cleaning {build_dir}...")
-            shutil.rmtree(build_dir)
+        if BUILD_DIR.exists():
+            print(f"Cleaning {BUILD_DIR}...")
+            shutil.rmtree(BUILD_DIR)
         return 0
 
     if target == "help":
         print(__doc__)
         return 0
 
-    if not os.path.exists(build_dir):
-        os.makedirs(build_dir)
-
-    # Set of valid targets
-    valid_targets = {
-        "html",
-        "dirhtml",
-        "latex",
-        "latexpdf",
-        "text",
-        "man",
-        "changes",
-        "linkcheck",
-        "doctest",
-        "all",
-    }
-
-    if target not in valid_targets:
+    if target not in VALID_TARGETS:
         print(f"Unknown target: {target}")
         print("Use 'help' target for help")
         return 1
 
+    BUILD_DIR.mkdir(parents=True, exist_ok=True)
     if target == "all":
-        # Build all formats
-        for fmt in ["html", "dirhtml", "latex"]:
-            cmd = [sphinx_build, "-b", fmt, source_dir, os.path.join(build_dir, fmt)]
-            print(f"Building {fmt} documentation...")
-            subprocess.run(cmd, check=True)
+        for builder in ["html", "dirhtml", "latex"]:
+            build(builder)
     else:
-        # Build specific format
-        cmd = [sphinx_build, "-b", target, source_dir, os.path.join(build_dir, target)]
-        print(f"Building {target} documentation...")
-        subprocess.run(cmd, check=True)
+        build(target)
 
-    print(f"Build finished. Documentation is in {os.path.join(build_dir, target)}")
+    print(f"Build finished. Documentation is in {BUILD_DIR / target}")
     return 0
 
 
