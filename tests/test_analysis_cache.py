@@ -10,6 +10,7 @@ from ssmdconvert import SourceInfo as BookSourceInfo
 from typer.testing import CliRunner
 
 import ttsready.input as input_loader
+import ttsready.pipeline as pipeline
 from ttsready.analysis import prepare_cached_report
 from ttsready.cli import app
 
