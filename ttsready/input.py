@@ -178,9 +178,7 @@ def _load_book(path: Path, *, workspace: bool = False) -> Document:
     try:
         loaded_workspace = load_book_workspace(path) if workspace else None
         book: Book = (
-            loaded_workspace.book
-            if loaded_workspace is not None
-            else load_book_bundle(path)
+            loaded_workspace.book if loaded_workspace is not None else load_book_bundle(path)
         )
     except Exception as exc:
         raise TTSReadyError(f"Could not load SSMD book {path}: {exc}") from exc

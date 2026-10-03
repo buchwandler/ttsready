@@ -343,10 +343,11 @@ def _write_standalone_atomic(path: Path, source: bytes, *, overwrite: bool) -> N
             try:
                 os.link(temporary, path)
             except (AttributeError, OSError) as exc:
-                if (
-                    isinstance(exc, OSError)
-                    and exc.errno not in {errno.EOPNOTSUPP, errno.EXDEV, errno.ENOSYS}
-                ):
+                if isinstance(exc, OSError) and exc.errno not in {
+                    errno.EOPNOTSUPP,
+                    errno.EXDEV,
+                    errno.ENOSYS,
+                }:
                     raise
                 with path.open("xb") as stream:
                     stream.write(temporary.read_bytes())

@@ -107,6 +107,7 @@ def _authoritative_annotation(annotation: AnnotationSpan) -> bool:
         or annotation.attrs.get("tag") in {"say-as", "phoneme"}
     )
 
+
 def _annotated_ssmd_text(text: str, annotations: tuple[AnnotationSpan, ...]) -> str:
     rendered = text
     for annotation in sorted(annotations, key=lambda item: item.char_start, reverse=True):
@@ -116,10 +117,11 @@ def _annotated_ssmd_text(text: str, annotations: tuple[AnnotationSpan, ...]) -> 
         )
         rendered = (
             rendered[: annotation.char_start]
-            + f"[{text[annotation.char_start:annotation.char_end]}]{{{attrs}}}"
+            + f"[{text[annotation.char_start : annotation.char_end]}]{{{attrs}}}"
             + rendered[annotation.char_end :]
         )
     return rendered
+
 
 def _restore_soft_line_breaks(
     source: str,
@@ -140,16 +142,12 @@ def _restore_soft_line_breaks(
     rendered = output
     for newline in reversed([index for index, char in enumerate(source) if char == "\n"]):
         offset = sum(
-            new_length - (end - start)
-            for start, end, new_length in edits
-            if end <= newline
+            new_length - (end - start) for start, end, new_length in edits if end <= newline
         )
         output_index = newline + offset
         if output_index < len(rendered) and rendered[output_index] == " ":
             rendered = rendered[:output_index] + "\n" + rendered[output_index + 1 :]
     return rendered
-
-
 
 
 def _spoken(
@@ -187,7 +185,7 @@ def _spoken(
     # Utterplan is the single semantic preparation owner.  Compile a small SSMD
     # document per source unit so chapter metadata (notably language and
     # sequence_fallback_mode) is interpreted exactly as it is for Readio.
-    escaped_language = str(language).replace('"', "\\\"")
+    escaped_language = str(language).replace('"', '\\"')
     planner_annotations = authoritative + tuple(
         AnnotationSpan(
             char_start=match.start,
@@ -198,12 +196,18 @@ def _spoken(
         for match in matches
     )
     source = (
-        "---" + chr(10)
-        + 'ssmd_version: "0.9"' + chr(10)
-        + f'language: "{escaped_language}"' + chr(10)
-        + f'sequence_fallback_mode: {sequence_fallback_mode}' + chr(10)
-        + "---" + chr(10)
-        + _annotated_ssmd_text(text, planner_annotations) + chr(10)
+        "---"
+        + chr(10)
+        + 'ssmd_version: "0.9"'
+        + chr(10)
+        + f'language: "{escaped_language}"'
+        + chr(10)
+        + f"sequence_fallback_mode: {sequence_fallback_mode}"
+        + chr(10)
+        + "---"
+        + chr(10)
+        + _annotated_ssmd_text(text, planner_annotations)
+        + chr(10)
     )
     protected_legacy = None
     if authoritative:
@@ -245,8 +249,16 @@ def _spoken(
                 {
                     key: getattr(item, key)
                     for key in (
-                        "source_start", "source_end", "output_start", "output_end",
-                        "source", "replacement", "kind", "rule", "language", "stages",
+                        "source_start",
+                        "source_end",
+                        "output_start",
+                        "output_end",
+                        "source",
+                        "replacement",
+                        "kind",
+                        "rule",
+                        "language",
+                        "stages",
                         "recognition_domain",
                     )
                     if hasattr(item, key)
@@ -282,8 +294,16 @@ def _spoken(
             {
                 key: getattr(item, key)
                 for key in (
-                    "source_start", "source_end", "output_start", "output_end",
-                    "source", "replacement", "kind", "rule", "language", "stages",
+                    "source_start",
+                    "source_end",
+                    "output_start",
+                    "output_end",
+                    "source",
+                    "replacement",
+                    "kind",
+                    "rule",
+                    "language",
+                    "stages",
                     "recognition_domain",
                 )
                 if hasattr(item, key)
@@ -292,8 +312,7 @@ def _spoken(
         )
         warnings = tuple(getattr(legacy, "warnings", ()))
         compatibility_stage_counts = {
-            str(stage.name): len(stage.mapped_edits)
-            for stage in getattr(legacy, "stages", ())
+            str(stage.name): len(stage.mapped_edits) for stage in getattr(legacy, "stages", ())
         }
         replacement_origin = "spokenform-compat"
     stage_edit_counts: dict[str, int] = {}
@@ -443,17 +462,14 @@ def _spoken(
         if output_text[output_start:output_end] == substitution.replacement:
             continue
         output_text = (
-            output_text[:output_start]
-            + substitution.replacement
-            + output_text[output_end:]
+            output_text[:output_start] + substitution.replacement + output_text[output_end:]
         )
     if authoritative_replacements:
         base_changes = tuple(
             change
             for change in base_changes
             if not any(
-                change.source_start < item.source_end
-                and item.source_start < change.source_end
+                change.source_start < item.source_end and item.source_start < change.source_end
                 for item in authoritative_replacements
             )
         )
@@ -754,6 +770,7 @@ def _iter_section_inputs(document: Document, include_titles: bool) -> Iterable[S
                 tuple(local_voice_spans),
             )
 
+
 def _language_key(value: object) -> str:
     return str(value).strip().casefold().replace("_", "-")
 
@@ -782,7 +799,6 @@ def _resolve_effective_language(document: Document, requested: str | None) -> st
     return str(requested or declared or "en")
 
 
-
 def prepare_tts_plan(
     document: Document,
     *,
@@ -807,8 +823,12 @@ def prepare_tts_plan(
     workspace_metadata = document.metadata.get("workspace")
     workspace_metadata = workspace_metadata if isinstance(workspace_metadata, dict) else {}
     portable_keys = (
-        "voice_bindings", "voice_defaults", "pause_defaults", "prosody_transitions",
-        "language_detection", "requires",
+        "voice_bindings",
+        "voice_defaults",
+        "pause_defaults",
+        "prosody_transitions",
+        "language_detection",
+        "requires",
     )
     ssmd_semantics = {
         key: document.metadata[key] for key in portable_keys if key in document.metadata
