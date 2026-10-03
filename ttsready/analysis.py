@@ -393,10 +393,21 @@ def prepare_cached_report(
 ) -> ConversionReport:
     """Analyze or reuse per-chapter results, then persist a versioned snapshot."""
     from .models import RenderOptions
-    from .pipeline import _tool_versions, normalization_profile, prepare
+    from .pipeline import (
+        _document_sequence_fallback_mode,
+        _tool_versions,
+        normalization_profile,
+        prepare,
+    )
 
     effective_language = str(language or document.metadata.get("language") or "en")
-    profile = asdict(normalization_profile(effective_language))
+    fallback_mode = _document_sequence_fallback_mode(document)
+    profile = asdict(
+        normalization_profile(
+            effective_language,
+            sequence_fallback_mode=fallback_mode,
+        )
+    )
     runtime = _tool_versions()
     profile_fingerprint = _fingerprint("profile", profile)
     runtime_fingerprint = _fingerprint("runtime", runtime)

@@ -16,6 +16,7 @@ from .identifiers import change_id, file_sha256, section_locator, stable_id, tex
 from .identifiers import context_id as make_context_id
 from .input import load
 from .models import (
+    DEFAULT_SEQUENCE_FALLBACK_MODE,
     ContextRecord,
     ConversionReport,
     ConversionResult,
@@ -29,6 +30,7 @@ from .models import (
     SpokenChange,
     SpokenformStats,
     TTSPlan,
+    resolve_sequence_fallback_mode,
 )
 from .overrides import apply_overrides, find_overrides
 from .planning import render_preview
@@ -82,8 +84,21 @@ class _SSMDReplacement:
     replacement: str
 
 
-def normalization_profile(language: str) -> NormalizationProfile:
-    return NormalizationProfile(language=language)
+def normalization_profile(
+    language: str,
+    *,
+    sequence_fallback_mode: str = DEFAULT_SEQUENCE_FALLBACK_MODE,
+) -> NormalizationProfile:
+    return NormalizationProfile(
+        language=language,
+        sequence_fallback_mode=resolve_sequence_fallback_mode(sequence_fallback_mode),
+    )
+
+
+def _document_sequence_fallback_mode(document: Document) -> str:
+    if "sequence_fallback_mode" not in document.metadata:
+        return resolve_sequence_fallback_mode()
+    return resolve_sequence_fallback_mode(document.metadata["sequence_fallback_mode"])
 
 
 def _authoritative_annotation(annotation: AnnotationSpan) -> bool:
@@ -98,6 +113,7 @@ def _spoken(
     *,
     context_id: str,
     language: str,
+    sequence_fallback_mode: str,
     enabled: bool,
     section_id: str,
     section_locator_value: str,
@@ -127,7 +143,12 @@ def _spoken(
 
         prepared = prepare_spokenform(
             text,
-            **asdict(normalization_profile(language)),
+            **asdict(
+                normalization_profile(
+                    language,
+                    sequence_fallback_mode=sequence_fallback_mode,
+                )
+            ),
             protected_spans=(*protected_spans, *((match.start, match.end) for match in matches)),
         )
         stage_edit_counts: dict[str, int] = {}
@@ -537,7 +558,13 @@ def prepare_tts_plan(
     metadata_language = document.metadata.get("language")
     selected_language = str(language or metadata_language or "en")
     requested_language = str(language) if language is not None else None
-    profile_options = asdict(normalization_profile(selected_language))
+    selected_fallback_mode = _document_sequence_fallback_mode(document)
+    profile_options = asdict(
+        normalization_profile(
+            selected_language,
+            sequence_fallback_mode=selected_fallback_mode,
+        )
+    )
     profile_hashes = normalization_fingerprints(selected_language, profile_options, sidecar)
     tool_versions = _tool_versions()
     section_stats = [
@@ -603,6 +630,7 @@ def prepare_tts_plan(
             raw,
             context_id=context_key,
             language=source_item.language or selected_language,
+            sequence_fallback_mode=selected_fallback_mode,
             enabled=apply_spokenform,
             section_id=section_id,
             section_index=section_index,

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from ttsready.input import load_ssmd
 from ttsready.models import (
     ContextRecord,
     ConversionReport,
@@ -17,7 +18,7 @@ from ttsready.models import (
     SpokenformStats,
 )
 from ttsready.output import OutputArtifact, OutputPlan
-from ttsready.pipeline import prepare as prepare_document
+from ttsready.pipeline import prepare
 from ttsready.reporting import (
     format_preflight,
     json_report,
@@ -27,6 +28,51 @@ from ttsready.reporting import (
     validate_report_path,
     write_report,
 )
+
+
+def prepare_with_fallback_mode(mode: str, text: str):
+    source = chr(10).join(
+        [
+            "---",
+            'ssmd_version: "0.9"',
+            "language: en-US",
+            f"sequence_fallback_mode: {mode}",
+            "---",
+            text,
+            "",
+        ]
+    )
+    return prepare(load_ssmd(source), include_titles=False)
+
+
+def test_markdown_report_omits_residual_fallback_from_real_pipeline() -> None:
+    result = prepare_with_fallback_mode(
+        "preserve",
+        "Dr. Smith had 3 items in-system and target/destination. Legal section 3.",
+    )
+    report = result.report
+    assert report is not None
+    rendered = markdown_report(report)
+
+    assert "in-system" in result.text and "target/destination" in result.text
+    assert report.spokenform.rules["abbr:Dr."] == 1
+    assert any(change.rule == "sequence.legal" for change in report.changes)
+    assert "fallback.sequence" not in report.spokenform.rules
+    assert "sequence_fallback" not in report.spokenform.stage_edits
+    assert "fallback.sequence" not in rendered
+    assert "| sequence_fallback |" not in rendered
+
+
+def test_markdown_report_includes_real_spell_fallback_edits() -> None:
+    result = prepare_with_fallback_mode("spell", "in-system target/destination")
+    report = result.report
+    assert report is not None
+    rendered = markdown_report(report)
+
+    assert report.spokenform.rules["fallback.sequence"] == 2
+    assert report.spokenform.stage_edits["sequence_fallback"] == 2
+    assert "fallback.sequence" in rendered
+    assert "| sequence_fallback |" in rendered
 
 
 def make_report() -> ConversionReport:

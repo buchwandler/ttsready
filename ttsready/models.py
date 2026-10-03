@@ -8,6 +8,20 @@ from typing import Any
 
 from ssmd import ParseStructureResult
 
+from .errors import TTSReadyError
+
+SEQUENCE_FALLBACK_MODES = frozenset({"spell", "preserve"})
+DEFAULT_SEQUENCE_FALLBACK_MODE = "spell"
+_MISSING_SEQUENCE_FALLBACK_MODE = object()
+
+
+def resolve_sequence_fallback_mode(value: object = _MISSING_SEQUENCE_FALLBACK_MODE) -> str:
+    if value is _MISSING_SEQUENCE_FALLBACK_MODE:
+        return DEFAULT_SEQUENCE_FALLBACK_MODE
+    if not isinstance(value, str) or value not in SEQUENCE_FALLBACK_MODES:
+        raise TTSReadyError("sequence_fallback_mode must be 'spell' or 'preserve'")
+    return value
+
 
 @dataclass(frozen=True, slots=True)
 class RenderOptions:
@@ -65,7 +79,7 @@ class NormalizationProfile:
     normalize_line_whitespace: bool = False
     collapse_blank_lines: bool = False
     generic_acronym_mode: str = "known_only"
-    sequence_fallback_mode: str = "preserve"
+    sequence_fallback_mode: str = DEFAULT_SEQUENCE_FALLBACK_MODE
     expand_structured: bool = True
     expand_numbers: bool = True
 

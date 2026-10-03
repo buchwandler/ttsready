@@ -10,7 +10,7 @@ from ssmdconvert import SourceInfo as BookSourceInfo
 from typer.testing import CliRunner
 
 import ttsready.input as input_loader
-import ttsready.pipeline as pipeline
+from ttsready.analysis import prepare_cached_report
 from ttsready.cli import app
 
 runner = CliRunner()
@@ -29,6 +29,36 @@ def _report(source: Path, *, format: str = "json"):
     )
     assert result.exit_code == 0, result.output
     return json.loads(result.output)
+
+
+def test_cached_analysis_identity_includes_fallback_mode(monkeypatch, tmp_path: Path) -> None:
+    source = tmp_path / "policy.ssmd.md"
+    source.write_text(_ssmd("Policy", "A residual sequence remains."), encoding="utf-8")
+    monkeypatch.setenv("TTSREADY_CACHE_DIR", str(tmp_path / "cache"))
+    original = input_loader.load(source)
+    spell = replace(
+        original,
+        metadata={**original.metadata, "sequence_fallback_mode": "spell"},
+    )
+    preserve = replace(
+        original,
+        metadata={**original.metadata, "sequence_fallback_mode": "preserve"},
+    )
+    options = {
+        "language": None,
+        "max_paragraph_chars": 1000,
+        "apply_spokenform": True,
+        "include_titles": False,
+        "sidecar": None,
+    }
+
+    spell_report = prepare_cached_report(spell, **options)
+    preserve_report = prepare_cached_report(preserve, **options)
+
+    assert spell_report.analysis_id != preserve_report.analysis_id
+    assert spell_report.normalization_profile["sequence_fallback_mode"] == "spell"
+    assert preserve_report.normalization_profile["sequence_fallback_mode"] == "preserve"
+    assert len(list((tmp_path / "cache" / "chapters").glob("*.json"))) == 2
 
 
 def test_stale_context_does_not_recompute_spokenform(monkeypatch, tmp_path: Path) -> None:

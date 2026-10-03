@@ -25,10 +25,20 @@ from ttsready.sidecar import (
 runner = CliRunner()
 
 
-def _source(tmp_path: Path, body: str = "He met Dr. Smith and found 3 items.") -> Path:
+def _source(
+    tmp_path: Path,
+    body: str = "He met Dr. Smith and found 3 items.",
+    *,
+    sequence_fallback_mode: str | None = None,
+) -> Path:
     source = tmp_path / "book.ssmd.md"
+    fallback = (
+        f"sequence_fallback_mode: {sequence_fallback_mode}\n"
+        if sequence_fallback_mode is not None
+        else ""
+    )
     source.write_text(
-        f'---\nssmd_version: "0.9"\ntitle: "Book"\nlanguage: en-US\n---\n{body}\n',
+        f'---\nssmd_version: "0.9"\ntitle: "Book"\nlanguage: en-US\n{fallback}---\n{body}\n',
         encoding="utf-8",
     )
     return source
@@ -73,6 +83,7 @@ def test_lock_creation_is_deterministic_and_verification_is_strict(tmp_path: Pat
     assert first_record["schema"] == "ttsready.lock.v1"
     assert next(iter(first_record["chapters"].values())).keys() == {"sha256"}
     assert first_record["normalization_profile"]["language"] == "en-US"
+    assert first_record["normalization_profile"]["sequence_fallback_mode"] == "spell"
     assert len(first_record["normalization_profile"]["pronunciation_profile_sha256"]) == 64
 
     profile_options = asdict(pipeline.normalization_profile("en-US"))
@@ -96,6 +107,39 @@ def test_lock_creation_is_deterministic_and_verification_is_strict(tmp_path: Pat
     )
     assert language_drift.exit_code == 1
     assert "normalization_profile.language" in language_drift.output
+
+
+def test_fallback_modes_have_distinct_normalization_fingerprints() -> None:
+    spell = asdict(pipeline.normalization_profile("en", sequence_fallback_mode="spell"))
+    preserve = asdict(pipeline.normalization_profile("en", sequence_fallback_mode="preserve"))
+
+    assert spell != preserve
+    assert (
+        normalization_fingerprints("en", spell, None)["options_sha256"]
+        != (normalization_fingerprints("en", preserve, None)["options_sha256"])
+    )
+
+
+def test_lock_records_fallback_mode_and_verify_detects_mode_drift(tmp_path: Path) -> None:
+    source = _source(tmp_path, sequence_fallback_mode="preserve")
+    lock_path = tmp_path / "book.lock.json"
+
+    created = _create_lock(source, lock_path)
+
+    assert created.exit_code == 0, created.output
+    record = json.loads(lock_path.read_text(encoding="utf-8"))
+    assert record["normalization_profile"]["sequence_fallback_mode"] == "preserve"
+
+    source.write_text(
+        source.read_text(encoding="utf-8").replace(
+            "sequence_fallback_mode: preserve", "sequence_fallback_mode: spell"
+        ),
+        encoding="utf-8",
+    )
+    verified = runner.invoke(app, ["verify", str(source), "--lock", str(lock_path)])
+
+    assert verified.exit_code == 1
+    assert "normalization_profile.sequence_fallback_mode" in verified.output
 
 
 def test_lock_verification_reports_runtime_version_drift(tmp_path: Path, monkeypatch) -> None:
@@ -157,14 +201,19 @@ def test_lock_and_freeze_support_ssmdbook_artifacts(tmp_path: Path) -> None:
             'ssmd_version: "0.9"',
             'title: "Chapter"',
             "language: en-US",
+            "sequence_fallback_mode: preserve",
             "---",
-            "Dr. found 3 items.",
+            "Dr. found 3 items in-system target/destination.",
             "",
         ]
     )
     book = Book(
         source=BookSourceInfo(format="epub", media_type="application/epub+zip", name="source.epub"),
-        metadata={"title": "Book", "language": "en-US"},
+        metadata={
+            "title": "Book",
+            "language": "en-US",
+            "sequence_fallback_mode": "preserve",
+        },
         chapters=(BookChapter("chapter-0001", 1, "Chapter", chapter_ssmd),),
         source_sha256="a" * 64,
         source_chapter_count=1,
@@ -183,6 +232,9 @@ def test_lock_and_freeze_support_ssmdbook_artifacts(tmp_path: Path) -> None:
     assert frozen.exit_code == 0, frozen.output
     frozen_book = load_book_bundle(frozen_path)
     assert '[Dr.]{sub="Doctor"}' in frozen_book.chapters[0].ssmd
+    assert frozen_book.metadata["sequence_fallback_mode"] == "preserve"
+    assert "sequence_fallback_mode: preserve" in frozen_book.chapters[0].ssmd
+    assert "in-system target/destination" in frozen_book.chapters[0].ssmd
     assert '[3]{sub="three"}' in frozen_book.chapters[0].ssmd
 
 

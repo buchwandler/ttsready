@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from .models import ConversionReport, Document
+from .models import SEQUENCE_FALLBACK_MODES, ConversionReport, Document
 from .sidecar import Sidecar
 
 LOCK_SCHEMA = "ttsready.lock.v1"
@@ -113,6 +113,7 @@ def create_lock_record(
         "runtime_fingerprint": runtime_fingerprint(report.tool_versions),
         "normalization_profile": {
             "language": report.effective_language,
+            "sequence_fallback_mode": report.normalization_profile["sequence_fallback_mode"],
             **profile_hashes,
         },
         "prepared_output_sha256": _sha256(prepared_output.encode("utf-8")),
@@ -179,8 +180,15 @@ def _validate_lock(value: Any) -> dict[str, Any]:
         "pronunciation_profile_sha256",
         "profile_sha256",
     }
-    if set(profile) != profile_fields:
+    if set(profile) not in (profile_fields, profile_fields | {"sequence_fallback_mode"}):
         raise ReproducibilityError("Lock normalization_profile has invalid fields")
+    if "sequence_fallback_mode" in profile and (
+        not isinstance(profile["sequence_fallback_mode"], str)
+        or profile["sequence_fallback_mode"] not in SEQUENCE_FALLBACK_MODES
+    ):
+        raise ReproducibilityError(
+            "Lock normalization_profile.sequence_fallback_mode must be 'spell' or 'preserve'"
+        )
     if not isinstance(profile["language"], str) or not profile["language"]:
         raise ReproducibilityError("Lock normalization_profile.language must be a non-empty string")
     for field in ("options_sha256", "pronunciation_profile_sha256", "profile_sha256"):

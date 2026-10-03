@@ -4,7 +4,10 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 import ttsready.pipeline as pipeline
+from ttsready.errors import TTSReadyError
 from ttsready.models import Document, RenderOptions, Section, SourceInfo
 
 
@@ -22,6 +25,50 @@ def test_source_paragraphs_join_soft_line_wraps() -> None:
         "First line continues here.",
         "Second paragraph.",
     ]
+
+
+def test_normalization_profile_resolves_document_policy() -> None:
+    spell = pipeline.normalization_profile("en")
+    preserve = pipeline.normalization_profile("en", sequence_fallback_mode="preserve")
+
+    assert spell.sequence_fallback_mode == "spell"
+    assert preserve.sequence_fallback_mode == "preserve"
+    with pytest.raises(TTSReadyError, match="sequence_fallback_mode must be"):
+        pipeline.normalization_profile("en", sequence_fallback_mode="SPELL")
+
+
+def test_spokenform_receives_fallback_mode_with_local_language(monkeypatch) -> None:
+    received = {}
+
+    def fake_prepare(text: str, **kwargs):
+        received.update(kwargs)
+        return SimpleNamespace(spoken_text=text, warnings=(), stages=(), source_replacements=())
+
+    monkeypatch.setitem(sys.modules, "spokenform", SimpleNamespace(prepare=fake_prepare))
+    pipeline._spoken(
+        "in-system target/destination",
+        context_id="context-1",
+        language="fr",
+        sequence_fallback_mode="preserve",
+        enabled=True,
+        section_id="section-1",
+        section_locator_value="id:section-1",
+        section_index=1,
+        source_paragraph=0,
+        sidecar=None,
+    )
+
+    assert received["language"] == "fr"
+    assert received["sequence_fallback_mode"] == "preserve"
+
+
+def test_plan_reports_artifact_fallback_mode() -> None:
+    source_document = document("in-system target/destination")
+    source_document.metadata["sequence_fallback_mode"] = "preserve"
+
+    plan = pipeline.prepare_tts_plan(source_document, apply_spokenform=False)
+
+    assert plan.report.normalization_profile["sequence_fallback_mode"] == "preserve"
 
 
 def test_prepare_without_spokenform_keeps_short_paragraphs() -> None:

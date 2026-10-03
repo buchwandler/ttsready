@@ -10,11 +10,25 @@ import ssmd as ssmd_library
 from ssmdconvert import Book, BookChapter, load_book_bundle
 
 from .errors import TTSReadyError, UnsupportedInputError
-from .models import Document, Section, SourceInfo
+from .models import (
+    Document,
+    Section,
+    SourceInfo,
+    resolve_sequence_fallback_mode,
+)
 
 
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _resolve_artifact_sequence_fallback_mode(metadata: dict, *, label: str) -> str:
+    try:
+        return resolve_sequence_fallback_mode(metadata["sequence_fallback_mode"])
+    except KeyError:
+        return resolve_sequence_fallback_mode()
+    except TTSReadyError as exc:
+        raise TTSReadyError(f"{label}: {exc}") from exc
 
 
 def _parse_ssmd(source: str, *, label: str):
@@ -99,7 +113,14 @@ def load_ssmd(
     return Document(
         source=SourceInfo(source_path or Path("<memory>"), "ssmd", "text/markdown"),
         sections=[section],
-        metadata={**structure.header, "title": document_title},
+        metadata={
+            **structure.header,
+            "title": document_title,
+            "sequence_fallback_mode": _resolve_artifact_sequence_fallback_mode(
+                structure.header,
+                label=f"SSMD document {label}",
+            ),
+        },
         source_sha256=digest,
         content_fingerprint=_content_fingerprint("ssmd", [(section.id, digest)]),
     )
@@ -112,6 +133,44 @@ def _load_standalone(path: Path) -> Document:
     except (OSError, UnicodeDecodeError) as exc:
         raise TTSReadyError(f"Could not read SSMD {path}: {exc}") from exc
     return load_ssmd(source, source_path=path, source_sha256=_sha256(raw))
+
+
+def _resolve_book_sequence_fallback_mode(metadata: dict, sections: list[Section]) -> str:
+    key = "sequence_fallback_mode"
+    manifest_has_mode = key in metadata
+    manifest_mode = _resolve_artifact_sequence_fallback_mode(
+        metadata,
+        label="SSMD book manifest",
+    )
+    chapter_modes = []
+    for section in sections:
+        if section.structure is None or key not in section.structure.header:
+            continue
+        chapter_mode = _resolve_artifact_sequence_fallback_mode(
+            section.structure.header,
+            label=f"SSMD book chapter {section.id!r}",
+        )
+        chapter_modes.append((section.id, chapter_mode))
+
+    if manifest_has_mode:
+        for chapter_id, chapter_mode in chapter_modes:
+            if chapter_mode != manifest_mode:
+                raise TTSReadyError(
+                    f"SSMD book chapter {chapter_id!r} sequence_fallback_mode "
+                    f"{chapter_mode!r} conflicts with manifest value {manifest_mode!r}"
+                )
+        return manifest_mode
+
+    if not chapter_modes:
+        return resolve_sequence_fallback_mode()
+    first_chapter_id, first_mode = chapter_modes[0]
+    for chapter_id, chapter_mode in chapter_modes[1:]:
+        if chapter_mode != first_mode:
+            raise TTSReadyError(
+                "Conflicting sequence_fallback_mode values in SSMD book chapters "
+                f"{first_chapter_id!r} and {chapter_id!r}"
+            )
+    return first_mode
 
 
 def _load_book(path: Path) -> Document:
@@ -134,10 +193,15 @@ def _load_book(path: Path) -> Document:
         sections.append(section)
         chapter_hashes.append((chapter.id, section.chapter_sha256 or ""))
 
+    metadata = dict(book.metadata)
+    metadata["sequence_fallback_mode"] = _resolve_book_sequence_fallback_mode(
+        book.metadata,
+        sections,
+    )
     return Document(
         source=SourceInfo(path, "ssmdbook", "application/vnd.ssmd.book"),
         sections=sections,
-        metadata=dict(book.metadata),
+        metadata=metadata,
         original_section_count=book.source_chapter_count or len(book.chapters),
         source_sha256=book.source_sha256,
         content_fingerprint=_content_fingerprint("ssmdbook", chapter_hashes),
