@@ -165,17 +165,26 @@ def test_sequence_policy_change_invalidates_spell_profile_cache(
     monkeypatch.setattr(
         pipeline,
         "normalization_profile",
-        lambda language: replace(preserve_profile(language), sequence_fallback_mode="spell"),
+        lambda language, **kwargs: replace(
+            preserve_profile(language, **kwargs), sequence_fallback_mode="preserve"
+        ),
     )
 
+    preserve_report = _report(source)
+    assert preserve_report["normalization_profile"]["sequence_fallback_mode"] == "preserve"
+    assert all(change["rule"] != "fallback.sequence" for change in preserve_report["changes"])
+
+    monkeypatch.setattr(
+        pipeline,
+        "normalization_profile",
+        lambda language, **kwargs: replace(
+            preserve_profile(language, **kwargs), sequence_fallback_mode="spell"
+        ),
+    )
     spell_report = _report(source)
     assert spell_report["normalization_profile"]["sequence_fallback_mode"] == "spell"
     assert any(change["rule"] == "fallback.sequence" for change in spell_report["changes"])
 
-    monkeypatch.setattr(pipeline, "normalization_profile", preserve_profile)
-    preserve_report = _report(source)
-
-    assert preserve_report["normalization_profile"]["sequence_fallback_mode"] == "preserve"
     assert spell_report["analysis_id"] != preserve_report["analysis_id"]
     spoken_text = preserve_report["contexts"][0]["spoken_text"]
     assert "in-system" in spoken_text

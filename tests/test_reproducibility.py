@@ -87,16 +87,16 @@ def test_lock_creation_is_deterministic_and_verification_is_strict(tmp_path: Pat
     assert len(first_record["normalization_profile"]["pronunciation_profile_sha256"]) == 64
 
     profile_options = asdict(pipeline.normalization_profile("en-US"))
-    assert profile_options["sequence_fallback_mode"] == "preserve"
+    assert profile_options["sequence_fallback_mode"] == "spell"
     lock_profile = first_record["normalization_profile"]
     assert (
         lock_profile["options_sha256"]
         == normalization_fingerprints("en-US", profile_options, None)["options_sha256"]
     )
-    spell_options = {**profile_options, "sequence_fallback_mode": "spell"}
+    preserve_options = {**profile_options, "sequence_fallback_mode": "preserve"}
     assert (
         lock_profile["options_sha256"]
-        != normalization_fingerprints("en-US", spell_options, None)["options_sha256"]
+        != normalization_fingerprints("en-US", preserve_options, None)["options_sha256"]
     )
     verified = runner.invoke(app, ["verify", str(source), "--lock", str(first)])
     assert verified.exit_code == 0, verified.output

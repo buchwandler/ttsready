@@ -87,7 +87,8 @@ def test_prepare_without_spokenform_keeps_short_paragraphs() -> None:
 
 
 def test_normalization_profile_preserves_residual_sequences() -> None:
-    assert pipeline.normalization_profile("en").sequence_fallback_mode == "preserve"
+    profile = pipeline.normalization_profile("en", sequence_fallback_mode="preserve")
+    assert profile.sequence_fallback_mode == "preserve"
 
 
 def test_residual_sequences_stay_lexical_and_structured_rules_remain_active() -> None:
@@ -96,7 +97,9 @@ def test_residual_sequences_stay_lexical_and_structured_rules_remain_active() ->
         "build-up penetration-testing we/somebody where/who ART EVAC"
     )
     structured_text = "Chapter 1 Null+1 3–2–1 2.0 etc."
-    result = pipeline.prepare(document(f"{residual_text}\n{structured_text}"), language="en")
+    source_document = document(f"{residual_text}\n{structured_text}")
+    source_document.metadata["sequence_fallback_mode"] = "preserve"
+    result = pipeline.prepare(source_document, language="en")
     report = result.report
     assert report is not None
 
