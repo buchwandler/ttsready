@@ -1,0 +1,41 @@
+schema: releaseledger.entry-batch.v1
+operation: create
+schema_version: 1
+object_type: release_entry_batch
+release_version: 0.1.1
+git_base_ref: 86984b3c2bbc58ed1ed4bec5c7c267a4478f0284
+git_base_sha: 86984b3c2bbc58ed1ed4bec5c7c267a4478f0284
+git_head_ref: 1465be4ad1e989b04acdcee0ad5f1a9196485413
+git_head_sha: 1465be4ad1e989b04acdcee0ad5f1a9196485413
+include_merges: nontrivial
+entries:
+  - kind: added
+    summary: Added per-artifact control for spelling or preserving residual sequences
+    status: accepted
+    source_refs:
+      - git:1465be4ad1e989b04acdcee0ad5f1a9196485413
+    paths:
+      - ttsready/input.py
+      - ttsready/pipeline.py
+      - ttsready/reproducibility.py
+    sources:
+      - git:1465be4ad1e989b04acdcee0ad5f1a9196485413
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"
+  - kind: changed
+    summary: Improved CLI help readability on narrow terminals
+    status: accepted
+    source_refs:
+      - git:cfaf3ede40e1f0dcd51c5858fd7210e1d3e52c4b
+    paths:
+      - tests/test_cli.py
+      - ttsready/cli.py
+      - ttsready/cli_help.py
+    sources:
+      - git:cfaf3ede40e1f0dcd51c5858fd7210e1d3e52c4b
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"

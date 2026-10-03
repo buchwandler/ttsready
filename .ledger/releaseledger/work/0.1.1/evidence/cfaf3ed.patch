@@ -1,0 +1,357 @@
+ tests/test_analysis_cache.py  | 30 +++++++++++++++++++++
+ tests/test_cli.py             | 49 ++++++++++++++++++++++++++++++++++
+ tests/test_pipeline.py        | 43 ++++++++++++++++++++++++++++++
+ tests/test_reporting.py       | 26 ++++++++++++++++++
+ tests/test_reproducibility.py | 14 ++++++++++
+ ttsready/cli.py               |  4 ++-
+ ttsready/cli_help.py          | 62 +++++++++++++++++++++++++++++++++++++++++++
+ ttsready/models.py            |  2 +-
+ 8 files changed, 228 insertions(+), 2 deletions(-)
+
+diff --git a/tests/test_analysis_cache.py b/tests/test_analysis_cache.py
+index 5d049b0..d8b0bdb 100644
+--- a/tests/test_analysis_cache.py
++++ b/tests/test_analysis_cache.py
+@@ -10,6 +10,7 @@ from ssmdconvert import SourceInfo as BookSourceInfo
+ from typer.testing import CliRunner
+
+ import ttsready.input as input_loader
++import ttsready.pipeline as pipeline
+ from ttsready.cli import app
+
+ runner = CliRunner()
+@@ -121,3 +122,32 @@ def test_report_reuses_unaffected_chapter_analysis(monkeypatch, tmp_path: Path)
+
+     assert context.exit_code == 0, context.output
+     assert json.loads(context.output)["spoken_sentence_text"] == "The first chapter has three."
++
++
++def test_sequence_policy_change_invalidates_spell_profile_cache(
++    monkeypatch, tmp_path: Path
++) -> None:
++    source = tmp_path / "book.ssmd.md"
++    source.write_text(_ssmd("Book", "in-system target/destination"), encoding="utf-8")
++    monkeypatch.setenv("TTSREADY_CACHE_DIR", str(tmp_path / "cache"))
++    preserve_profile = pipeline.normalization_profile
++    monkeypatch.setattr(
++        pipeline,
++        "normalization_profile",
++        lambda language: replace(preserve_profile(language), sequence_fallback_mode="spell"),
++    )
++
++    spell_report = _report(source)
++    assert spell_report["normalization_profile"]["sequence_fallback_mode"] == "spell"
++    assert any(change["rule"] == "fallback.sequence" for change in spell_report["changes"])
++
++    monkeypatch.setattr(pipeline, "normalization_profile", preserve_profile)
++    preserve_report = _report(source)
++
++    assert preserve_report["normalization_profile"]["sequence_fallback_mode"] == "preserve"
++    assert spell_report["analysis_id"] != preserve_report["analysis_id"]
++    spoken_text = preserve_report["contexts"][0]["spoken_text"]
++    assert "in-system" in spoken_text
++    assert "target/destination" in spoken_text
++    assert all(change["rule"] != "fallback.sequence" for change in preserve_report["changes"])
++    assert "sequence_fallback" not in preserve_report["spokenform"]["stage_edits"]
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+index 0ff5f77..7e9cb99 100644
+--- a/tests/test_cli.py
++++ b/tests/test_cli.py
+@@ -57,6 +57,55 @@ def test_root_help_lists_commands_without_source_argument() -> None:
+     assert "--report" not in result.output
+
+
++@pytest.mark.parametrize("terminal_width", [40, 48, 60])
++def test_report_help_is_readable_on_narrow_terminals(terminal_width: int) -> None:
++    result = runner.invoke(
++        cli.app,
++        ["report", "--help"],
++        terminal_width=terminal_width,
++    )
++
++    assert result.exit_code == 0, result.output
++    output_lines = result.output.splitlines()
++    normalized = " ".join(result.output.split())
++
++    assert any(line.strip().startswith("--max-paragraph-chars ") for line in output_lines)
++    assert any(line.strip() == "--spokenform / --no-spokenform" for line in output_lines)
++    assert any(line.strip() == "--titles / --no-titles" for line in output_lines)
++    assert any(line.strip().startswith("--format ") and "md|json" in line for line in output_lines)
++    assert "Semantic TTS chunk limit after spokenform normalization." in normalized
++
++    option_index = next(
++        index
++        for index, line in enumerate(output_lines)
++        if line.strip().startswith("--max-paragraph-chars ")
++    )
++    assert output_lines[option_index + 1].lstrip().startswith("Semantic TTS chunk limit")
++    assert len(output_lines[option_index + 1]) - len(output_lines[option_index + 1].lstrip()) >= 6
++
++
++def test_narrow_root_help_stacks_commands_and_descriptions() -> None:
++    result = runner.invoke(cli.app, ["--help"], terminal_width=40)
++
++    assert result.exit_code == 0, result.output
++    lines = result.output.splitlines()
++    assert all(command in result.output for command in ("convert", "export", "report"))
++
++    report_index = lines.index("  report")
++    assert lines[report_index + 1].startswith("      ")
++    assert lines[report_index + 1].strip()
++
++
++def test_report_help_keeps_compact_layout_on_wide_terminals() -> None:
++    result = runner.invoke(cli.app, ["report", "--help"], terminal_width=80)
++
++    assert result.exit_code == 0, result.output
++    assert any(
++        line.startswith("  --config") and "YAML customization sidecar." in line
++        for line in result.output.splitlines()
++    )
++
++
+ def test_root_without_args_shows_help() -> None:
+     result = runner.invoke(cli.app, [])
+
+diff --git a/tests/test_pipeline.py b/tests/test_pipeline.py
+index 820f3e3..433ff0d 100644
+--- a/tests/test_pipeline.py
++++ b/tests/test_pipeline.py
+@@ -39,6 +39,49 @@ def test_prepare_without_spokenform_keeps_short_paragraphs() -> None:
+     assert result.report.warnings == []
+
+
++def test_normalization_profile_preserves_residual_sequences() -> None:
++    assert pipeline.normalization_profile("en").sequence_fallback_mode == "preserve"
++
++
++def test_residual_sequences_stay_lexical_and_structured_rules_remain_active() -> None:
++    residual_text = (
++        "in-system target/destination bot-pilots high-threat Barish-Estranza "
++        "build-up penetration-testing we/somebody where/who ART EVAC"
++    )
++    structured_text = "Chapter 1 Null+1 3–2–1 2.0 etc."
++    result = pipeline.prepare(document(f"{residual_text}\n{structured_text}"), language="en")
++    report = result.report
++    assert report is not None
++
++    for phrase in (
++        "in-system",
++        "target/destination",
++        "bot-pilots",
++        "high-threat",
++        "Barish-Estranza",
++        "build-up",
++        "penetration-testing",
++        "we/somebody",
++        "where/who",
++        "ART",
++        "EVAC",
++    ):
++        assert phrase in result.text
++    assert "i n hyphen s y s t e m" not in result.text
++    assert "t a r g e t slash" not in result.text
++    assert "B a r i s h hyphen" not in result.text
++    assert all(change.rule != "fallback.sequence" for change in report.changes)
++    assert "fallback.sequence" not in report.spokenform.rules
++    assert "sequence_fallback" not in report.spokenform.stage_edits
++
++    assert "chapter one" in result.text
++    assert "Null plus one" in result.text
++    assert "two point zero" in result.text
++    assert "et cetera" in result.text
++    assert report.spokenform.rules["sequence.legal"] == 1
++    assert report.spokenform.rules["sequence.math"] == 1
++
++
+ def test_title_is_optional() -> None:
+     with_title = pipeline.prepare(
+         document("Body.", title="Chapter One"),
+diff --git a/tests/test_reporting.py b/tests/test_reporting.py
+index 8570e4f..ac0349d 100644
+--- a/tests/test_reporting.py
++++ b/tests/test_reporting.py
+@@ -8,12 +8,16 @@ import pytest
+ from ttsready.models import (
+     ContextRecord,
+     ConversionReport,
++    Document,
++    Section,
+     SectionStats,
+     SentenceContext,
++    SourceInfo,
+     SpokenChange,
+     SpokenformStats,
+ )
+ from ttsready.output import OutputArtifact, OutputPlan
++from ttsready.pipeline import prepare as prepare_document
+ from ttsready.reporting import (
+     format_preflight,
+     json_report,
+@@ -195,3 +199,25 @@ def test_write_report_accepts_explicit_format_without_suffix_and_rejects_conflic
+     assert json.loads(extensionless.read_text(encoding="utf-8"))["schema"] == ("ttsready.report.v2")
+     with pytest.raises(ValueError, match="conflicts"):
+         write_report(tmp_path / "report.md", report, format="json")
++
++
++def test_markdown_report_omits_residual_fallback_from_real_pipeline() -> None:
++    source_text = "in-system target/destination Barish-Estranza ART EVAC"
++    document = Document(
++        SourceInfo(Path("residual.txt"), "text", "text/plain"),
++        [Section("section-1", source_text)],
++        {"title": "Residual prose", "language": "en"},
++    )
++    prepared = prepare_document(document, language="en")
++    report = prepared.report
++    assert report is not None
++    rendered = markdown_report(report)
++
++    assert all(
++        phrase in prepared.text
++        for phrase in ("in-system", "target/destination", "Barish-Estranza", "ART", "EVAC")
++    )
++    assert "fallback.sequence" not in rendered
++    assert "| sequence_fallback |" not in rendered
++    assert "fallback.sequence" not in report.spokenform.rules
++    assert "sequence_fallback" not in report.spokenform.stage_edits
+diff --git a/tests/test_reproducibility.py b/tests/test_reproducibility.py
+index 0e17c0a..4e32e6f 100644
+--- a/tests/test_reproducibility.py
++++ b/tests/test_reproducibility.py
+@@ -1,6 +1,7 @@
+ from __future__ import annotations
+
+ import json
++from dataclasses import asdict
+ from pathlib import Path
+ from types import SimpleNamespace
+
+@@ -13,6 +14,7 @@ import ttsready.pipeline as pipeline
+ from ttsready.cli import app
+ from ttsready.input import load
+ from ttsready.pipeline import prepare
++from ttsready.reproducibility import normalization_fingerprints
+ from ttsready.sidecar import (
+     Sidecar,
+     SpeechOverride,
+@@ -73,6 +75,18 @@ def test_lock_creation_is_deterministic_and_verification_is_strict(tmp_path: Pat
+     assert first_record["normalization_profile"]["language"] == "en-US"
+     assert len(first_record["normalization_profile"]["pronunciation_profile_sha256"]) == 64
+
++    profile_options = asdict(pipeline.normalization_profile("en-US"))
++    assert profile_options["sequence_fallback_mode"] == "preserve"
++    lock_profile = first_record["normalization_profile"]
++    assert (
++        lock_profile["options_sha256"]
++        == normalization_fingerprints("en-US", profile_options, None)["options_sha256"]
++    )
++    spell_options = {**profile_options, "sequence_fallback_mode": "spell"}
++    assert (
++        lock_profile["options_sha256"]
++        != normalization_fingerprints("en-US", spell_options, None)["options_sha256"]
++    )
+     verified = runner.invoke(app, ["verify", str(source), "--lock", str(first)])
+     assert verified.exit_code == 0, verified.output
+
+diff --git a/ttsready/cli.py b/ttsready/cli.py
+index 23911d3..a864431 100644
+--- a/ttsready/cli.py
++++ b/ttsready/cli.py
+@@ -12,6 +12,7 @@ from spokenform.language import base_language
+
+ from . import __version__
+ from .analysis import AnalysisCacheError, load_cached_report, prepare_cached_report
++from .cli_help import AdaptiveTyper, AdaptiveTyperGroup
+ from .context import context_payload, format_bug_report, format_context, render_context_json
+ from .errors import TTSReadyError
+ from .input import load
+@@ -184,7 +185,8 @@ ReportFormatOption = Annotated[
+     typer.Option("--format", help="Report format; inferred from -o when possible."),
+ ]
+
+-app = typer.Typer(
++app = AdaptiveTyper(
++    cls=AdaptiveTyperGroup,
+     add_completion=False,
+     no_args_is_help=True,
+     rich_markup_mode=None,
+diff --git a/ttsready/cli_help.py b/ttsready/cli_help.py
+new file mode 100644
+index 0000000..b3e7030
+--- /dev/null
++++ b/ttsready/cli_help.py
+@@ -0,0 +1,62 @@
++"""Adaptive narrow-terminal help formatting for the TTSReady CLI."""
++
++from __future__ import annotations
++
++from collections.abc import Sequence
++from typing import Any
++
++import typer
++from typer.core import TyperCommand, TyperGroup
++
++NARROW_HELP_WIDTH = 72
++
++# Typer exposes its context and formatter through the command class. Recent
++# Typer versions vendor Click-compatible classes, so derive from that context
++# rather than mixing exception types from a separately installed Click.
++_BaseHelpContext = TyperCommand.context_class
++_BaseHelpFormatter = _BaseHelpContext.formatter_class
++
++
++class AdaptiveHelpFormatter(_BaseHelpFormatter):
++    """Use stacked definition lists on narrow terminals."""
++
++    def write_dl(
++        self,
++        rows: Sequence[tuple[str, str]],
++        col_max: int = 30,
++        col_spacing: int = 2,
++    ) -> None:
++        rows = list(rows)
++
++        if self.width >= NARROW_HELP_WIDTH:
++            super().write_dl(rows, col_max=col_max, col_spacing=col_spacing)
++            return
++
++        for index, (term, description) in enumerate(rows):
++            self.write(f"{'':>{self.current_indent}}{term}\n")
++            if description:
++                with self.indentation():
++                    with self.indentation():
++                        self.write_text(description)
++            if index < len(rows) - 1:
++                self.write("\n")
++
++
++class AdaptiveHelpContext(_BaseHelpContext):
++    formatter_class = AdaptiveHelpFormatter
++
++
++class AdaptiveTyperCommand(TyperCommand):
++    context_class = AdaptiveHelpContext
++
++
++class AdaptiveTyperGroup(TyperGroup):
++    context_class = AdaptiveHelpContext
++
++
++class AdaptiveTyper(typer.Typer):
++    """Typer app that assigns the adaptive command class by default."""
++
++    def command(self, *args: Any, **kwargs: Any) -> Any:
++        kwargs.setdefault("cls", AdaptiveTyperCommand)
++        return super().command(*args, **kwargs)
+diff --git a/ttsready/models.py b/ttsready/models.py
+index fd5dc9d..6c576e2 100644
+--- a/ttsready/models.py
++++ b/ttsready/models.py
+@@ -65,7 +65,7 @@ class NormalizationProfile:
+     normalize_line_whitespace: bool = False
+     collapse_blank_lines: bool = False
+     generic_acronym_mode: str = "known_only"
+-    sequence_fallback_mode: str = "spell"
++    sequence_fallback_mode: str = "preserve"
+     expand_structured: bool = True
+     expand_numbers: bool = True

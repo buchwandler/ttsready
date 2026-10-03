@@ -1,0 +1,89 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 3
+release_version: 0.1.1
+git_base_ref: v0.1.0
+git_base_sha: 86984b3c2bbc58ed1ed4bec5c7c267a4478f0284
+git_head_ref: HEAD
+git_head_sha: 1465be4ad1e989b04acdcee0ad5f1a9196485413
+git_range: 86984b3c2bbc58ed1ed4bec5c7c267a4478f0284..1465be4ad1e989b04acdcee0ad5f1a9196485413
+commit_count: 2
+rows:
+  - sha: cfaf3ede40e1f0dcd51c5858fd7210e1d3e52c4b
+    source_ref: git:cfaf3ede40e1f0dcd51c5858fd7210e1d3e52c4b
+    short_sha: cfaf3ed
+    changed_paths:
+      - tests/test_analysis_cache.py
+      - tests/test_cli.py
+      - tests/test_pipeline.py
+      - tests/test_reporting.py
+      - tests/test_reproducibility.py
+      - ttsready/cli.py
+      - ttsready/cli_help.py
+      - ttsready/models.py
+    stats:
+      files_changed: 8
+      insertions: 228
+      deletions: 2
+    inspected: true
+    inspected_paths:
+      - tests/test_cli.py
+      - tests/test_pipeline.py
+      - ttsready/cli.py
+      - ttsready/cli_help.py
+      - ttsready/models.py
+    observed_behavior:
+      CLI help stacks commands and option descriptions below their
+      labels at narrow terminal widths and retains the compact layout at wider widths.
+      The transient fallback default change in this commit is superseded by explicit
+      artifact mode handling in the next commit, so it is not presented as final default
+      behavior.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: change fallback mode"
+    target_entry_id: entry-0002
+    notes: ""
+  - sha: 1465be4ad1e989b04acdcee0ad5f1a9196485413
+    source_ref: git:1465be4ad1e989b04acdcee0ad5f1a9196485413
+    short_sha: 1465be4
+    changed_paths:
+      - pyproject.toml
+      - tests/test_analysis_cache.py
+      - tests/test_pipeline.py
+      - tests/test_reporting.py
+      - tests/test_reproducibility.py
+      - tests/test_ssmd_input.py
+      - ttsready/analysis.py
+      - ttsready/input.py
+      - ttsready/models.py
+      - ttsready/pipeline.py
+      - ttsready/reproducibility.py
+    stats:
+      files_changed: 11
+      insertions: 448
+      deletions: 21
+    inspected: true
+    inspected_paths:
+      - pyproject.toml
+      - tests/test_ssmd_input.py
+      - tests/test_reproducibility.py
+      - ttsready/analysis.py
+      - ttsready/input.py
+      - ttsready/models.py
+      - ttsready/pipeline.py
+      - ttsready/reproducibility.py
+    observed_behavior:
+      Standalone SSMD headers and SSMD book metadata accept spell or
+      preserve modes for residual sequence fallback. Invalid values and conflicting
+      book metadata are rejected. The selected mode flows through TTS preparation, analysis
+      cache identity, and reproducibility locks; omitted settings retain the spell default.
+      The minimum ssmdconvert dependency is raised to 0.1.1.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: use sequence fallback setting from ssmdconvert"
+    target_entry_id: entry-0001
+    notes: ""

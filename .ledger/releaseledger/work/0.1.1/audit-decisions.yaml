@@ -1,0 +1,43 @@
+rows:
+  - sha: cfaf3ede40e1f0dcd51c5858fd7210e1d3e52c4b
+    inspected: true
+    inspected_paths:
+      - tests/test_cli.py
+      - tests/test_pipeline.py
+      - ttsready/cli.py
+      - ttsready/cli_help.py
+      - ttsready/models.py
+    observed_behavior: >-
+      CLI help stacks commands and option descriptions below their labels at narrow
+      terminal widths and retains the compact layout at wider widths. The transient
+      fallback default change in this commit is superseded by explicit artifact mode
+      handling in the next commit, so it is not presented as final default behavior.
+    public_impact: public
+    decision: accepted
+    target_entry_key: null
+    target_entry_id: null
+    notes: ""
+    stale: false
+  - sha: 1465be4ad1e989b04acdcee0ad5f1a9196485413
+    inspected: true
+    inspected_paths:
+      - pyproject.toml
+      - tests/test_ssmd_input.py
+      - tests/test_reproducibility.py
+      - ttsready/analysis.py
+      - ttsready/input.py
+      - ttsready/models.py
+      - ttsready/pipeline.py
+      - ttsready/reproducibility.py
+    observed_behavior: >-
+      Standalone SSMD headers and SSMD book metadata accept spell or preserve modes
+      for residual sequence fallback. Invalid values and conflicting book metadata
+      are rejected. The selected mode flows through TTS preparation, analysis cache
+      identity, and reproducibility locks; omitted settings retain the spell default.
+      The minimum ssmdconvert dependency is raised to 0.1.1.
+    public_impact: public
+    decision: accepted
+    target_entry_key: null
+    target_entry_id: null
+    notes: ""
+    stale: false

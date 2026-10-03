@@ -1,0 +1,54 @@
+{
+  "candidate_count": 2,
+  "candidates": [
+    {
+      "additions": 228,
+      "deletions": 2,
+      "patch_file": "cfaf3ed.patch",
+      "patch_sha256": "4f8b5c1e9ae2662b1dc8cb14db60a24e1815f2f6e34441264c575ea336f55984",
+      "paths": [
+        "tests/test_analysis_cache.py",
+        "tests/test_cli.py",
+        "tests/test_pipeline.py",
+        "tests/test_reporting.py",
+        "tests/test_reproducibility.py",
+        "ttsready/cli.py",
+        "ttsready/cli_help.py",
+        "ttsready/models.py"
+      ],
+      "sha": "cfaf3ede40e1f0dcd51c5858fd7210e1d3e52c4b",
+      "short_sha": "cfaf3ed",
+      "source_ref": "git:cfaf3ede40e1f0dcd51c5858fd7210e1d3e52c4b"
+    },
+    {
+      "additions": 448,
+      "deletions": 21,
+      "patch_file": "1465be4.patch",
+      "patch_sha256": "d8e2b67d0cd170b07efdd53e3827dcc29c97d71cb97a022a352c580ce27ecb90",
+      "paths": [
+        "pyproject.toml",
+        "tests/test_analysis_cache.py",
+        "tests/test_pipeline.py",
+        "tests/test_reporting.py",
+        "tests/test_reproducibility.py",
+        "tests/test_ssmd_input.py",
+        "ttsready/analysis.py",
+        "ttsready/input.py",
+        "ttsready/models.py",
+        "ttsready/pipeline.py",
+        "ttsready/reproducibility.py"
+      ],
+      "sha": "1465be4ad1e989b04acdcee0ad5f1a9196485413",
+      "short_sha": "1465be4",
+      "source_ref": "git:1465be4ad1e989b04acdcee0ad5f1a9196485413"
+    }
+  ],
+  "git_base_ref": "86984b3c2bbc58ed1ed4bec5c7c267a4478f0284",
+  "git_base_sha": "86984b3c2bbc58ed1ed4bec5c7c267a4478f0284",
+  "git_head_ref": "1465be4ad1e989b04acdcee0ad5f1a9196485413",
+  "git_head_sha": "1465be4ad1e989b04acdcee0ad5f1a9196485413",
+  "include_merges": "nontrivial",
+  "object_type": "git_evidence_manifest",
+  "release_version": "0.1.1",
+  "schema_version": 1
+}
