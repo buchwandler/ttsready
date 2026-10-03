@@ -1,0 +1,184 @@
+schema: releaseledger.entry-batch.v1
+operation: create
+schema_version: 1
+object_type: release_entry_batch
+release_version: 0.1.2
+git_base_ref: 7aca32d97e17101c7eb78dfce5d2a3e3e0e00a18
+git_base_sha: 7aca32d97e17101c7eb78dfce5d2a3e3e0e00a18
+git_head_ref: 22f69d91ef04eb14196f61821dcc4accf7dca661
+git_head_sha: 22f69d91ef04eb14196f61821dcc4accf7dca661
+include_merges: nontrivial
+entries:
+  - kind: added
+    summary: Added canonical SSMD and SSMD book loading with cached analysis and reproducible preparation
+    status: accepted
+    source_refs:
+      - git:13c3fb90eab3d2ddfe820e3319da28bceb99012e
+    paths:
+      - ttsready/input.py
+      - ttsready/analysis.py
+      - ttsready/materialization.py
+      - ttsready/reproducibility.py
+      - ttsready/pipeline.py
+    sources:
+      - git:13c3fb90eab3d2ddfe820e3319da28bceb99012e
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"
+  - kind: docs
+    summary: Documented installation, CLI, API, review, reproducibility, and release workflows
+    status: accepted
+    source_refs:
+      - git:e2025ecda261a52ec9cdb397716a990dbea74c80
+    paths:
+      - README.md
+      - RELEASING.md
+      - docs/index.md
+      - docs/cli.md
+      - docs/reproducibility.md
+    sources:
+      - git:e2025ecda261a52ec9cdb397716a990dbea74c80
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"
+  - kind: fixed
+    summary: Fixed CRLF and CR normalization before SSMD parsing
+    status: accepted
+    source_refs:
+      - git:86984b3c2bbc58ed1ed4bec5c7c267a4478f0284
+    paths:
+      - ttsready/input.py
+    sources:
+      - git:86984b3c2bbc58ed1ed4bec5c7c267a4478f0284
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"
+  - kind: changed
+    summary: Changed residual sequence handling and improved narrow-terminal CLI help
+    status: accepted
+    source_refs:
+      - git:cfaf3ede40e1f0dcd51c5858fd7210e1d3e52c4b
+    paths:
+      - ttsready/models.py
+      - ttsready/cli.py
+      - ttsready/cli_help.py
+      - ttsready/pipeline.py
+      - ttsready/reporting.py
+    sources:
+      - git:cfaf3ede40e1f0dcd51c5858fd7210e1d3e52c4b
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"
+  - kind: changed
+    summary: Changed sequence fallback settings for preparation, analysis, and reproducibility locks
+    status: accepted
+    source_refs:
+      - git:1465be4ad1e989b04acdcee0ad5f1a9196485413
+    paths:
+      - ttsready/input.py
+      - ttsready/pipeline.py
+      - ttsready/analysis.py
+      - ttsready/reproducibility.py
+      - ttsready/models.py
+    sources:
+      - git:1465be4ad1e989b04acdcee0ad5f1a9196485413
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"
+  - kind: internal
+    summary: Changed generated release records and historical changelog bookkeeping
+    status: accepted
+    internal: true
+    source_refs:
+      - git:730a89b3f471d4d486560f0811428d693279641e
+    paths:
+      - docs/changelog.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.1/release.md
+    sources:
+      - git:730a89b3f471d4d486560f0811428d693279641e
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"
+  - kind: internal
+    summary: Changed test fixtures and removed obsolete reporting coverage
+    status: accepted
+    internal: true
+    source_refs:
+      - git:8d66b004adf648124e268062b2e35d9fd23d8ee5
+    paths:
+      - tests/test_analysis_cache.py
+      - tests/test_reporting.py
+    sources:
+      - git:8d66b004adf648124e268062b2e35d9fd23d8ee5
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"
+  - kind: internal
+    summary: Changed regression coverage for sequence policies and deterministic locks
+    status: accepted
+    internal: true
+    source_refs:
+      - git:cef4aaaf625dba515a5758dba93c8d4ec84797d1
+    paths:
+      - tests/test_analysis_cache.py
+      - tests/test_pipeline.py
+      - tests/test_reproducibility.py
+    sources:
+      - git:cef4aaaf625dba515a5758dba93c8d4ec84797d1
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"
+  - kind: added
+    summary: Added SSMD book workspaces, chapter-aware output, utterplan preparation, and txt export
+    status: accepted
+    source_refs:
+      - git:2b5fd83f4b49ef9d89fa17f1b72df83ac0917d39
+    paths:
+      - ttsready/input.py
+      - ttsready/pipeline.py
+      - ttsready/cli.py
+      - ttsready/reporting.py
+    sources:
+      - git:2b5fd83f4b49ef9d89fa17f1b72df83ac0917d39
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"
+  - kind: internal
+    summary: Changed workspace preparation formatting and compatibility cleanup
+    status: accepted
+    internal: true
+    source_refs:
+      - git:50f9ad3321d04273e1786588fd01b51060e5669a
+    paths:
+      - ttsready/input.py
+      - ttsready/materialization.py
+      - ttsready/pipeline.py
+    sources:
+      - git:50f9ad3321d04273e1786588fd01b51060e5669a
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"
+  - kind: internal
+    summary: Changed canonical-input regression expectations for preserve fallback
+    status: accepted
+    internal: true
+    source_refs:
+      - git:22f69d91ef04eb14196f61821dcc4accf7dca661
+    paths:
+      - tests/test_ssmd_input.py
+    sources:
+      - git:22f69d91ef04eb14196f61821dcc4accf7dca661
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"

@@ -1,0 +1,25 @@
+ tests/test_ssmd_input.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/tests/test_ssmd_input.py b/tests/test_ssmd_input.py
+index 06d2bba..c36369b 100644
+--- a/tests/test_ssmd_input.py
++++ b/tests/test_ssmd_input.py
+@@ -289,7 +289,7 @@ def test_ssmdconvert_output_is_ttsready_canonical_input(tmp_path: Path) -> None:
+     source.write_text("The starship arrived.\n", encoding="utf-8")
+
+     conversion = convert_ssmd(source, title="Chapter", language="en-US")
+-    assert "sequence_fallback_mode: spell" in conversion.ssmd
++    assert "sequence_fallback_mode: preserve" in conversion.ssmd
+     canonical_path = tmp_path / "chapter.ssmd.md"
+     assert conversion.ssmd is not None
+     canonical_path.write_text(conversion.ssmd, encoding="utf-8", newline="")
+@@ -297,7 +297,7 @@ def test_ssmdconvert_output_is_ttsready_canonical_input(tmp_path: Path) -> None:
+     document = load(canonical_path)
+     result = prepare(document, apply_spokenform=False, include_titles=False)
+
+-    assert document.metadata["sequence_fallback_mode"] == "spell"
++    assert document.metadata["sequence_fallback_mode"] == "preserve"
+     assert document.sections[0].ssmd == conversion.ssmd
+     assert result.text.strip() == "The starship arrived."
+     assert result.report is not None

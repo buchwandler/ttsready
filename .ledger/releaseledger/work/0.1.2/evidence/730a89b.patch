@@ -1,0 +1,1705 @@
+ .../data/ledgers/main/events/events.jsonl          |   7 +
+ .../data/ledgers/main/releases/0.1.0/release.md    |   8 +-
+ .../main/releases/0.1.1/audit/commit-audit.yaml    |  89 +++
+ .../main/releases/0.1.1/entries/entry-0001.md      |  29 +
+ .../main/releases/0.1.1/entries/entry-0002.md      |  29 +
+ .../data/ledgers/main/releases/0.1.1/release.md    |  27 +
+ .../releaseledger/work/0.1.1/audit-decisions.yaml  |  43 ++
+ .ledger/releaseledger/work/0.1.1/audit.yaml        |  62 ++
+ .ledger/releaseledger/work/0.1.1/entries.yaml      |  41 ++
+ .../work/0.1.1/evidence/1465be4.patch              | 816 +++++++++++++++++++++
+ .../work/0.1.1/evidence/cfaf3ed.patch              | 357 +++++++++
+ .../work/0.1.1/evidence/manifest.json              |  54 ++
+ .ledger/releaseledger/work/0.1.1/range.json        |  13 +
+ docs/changelog.md                                  |  14 +-
+ 14 files changed, 1584 insertions(+), 5 deletions(-)
+
+diff --git a/.ledger/releaseledger/data/ledgers/main/events/events.jsonl b/.ledger/releaseledger/data/ledgers/main/events/events.jsonl
+index f8d035a..0a7d587 100644
+--- a/.ledger/releaseledger/data/ledgers/main/events/events.jsonl
++++ b/.ledger/releaseledger/data/ledgers/main/events/events.jsonl
+@@ -16,3 +16,10 @@
+ {"data":{"added_source_refs":[],"fields":["summary"],"removed_source_refs":[],"source_refs_mode":"unchanged"},"entry_id":"entry-0007","event":"entry.updated","event_id":"event-0016","record_revisions":{"entry:0.1.0/entry-0007":2},"release_version":"0.1.0","schema_version":2}
+ {"data":{"added_source_refs":[],"fields":["summary"],"removed_source_refs":[],"source_refs_mode":"unchanged"},"entry_id":"entry-0008","event":"entry.updated","event_id":"event-0017","record_revisions":{"entry:0.1.0/entry-0008":2},"release_version":"0.1.0","schema_version":2}
+ {"data":{"kind":"added","status":"accepted"},"entry_id":"entry-0009","event":"entry.added","event_id":"event-0018","record_revisions":{"entry:0.1.0/entry-0009":1,"release:0.1.0":10},"release_version":"0.1.0","schema_version":2}
++{"data":{"released_at":"2026-10-02"},"event":"release.finalized","event_id":"event-0019","record_revisions":{"release:0.1.0":11},"release_version":"0.1.0","schema_version":2}
++{"data":{"status":"planned"},"event":"release.created","event_id":"event-0020","record_revisions":{"release:0.1.1":1},"release_version":"0.1.1","schema_version":2}
++{"data":{"fields":["git_base_ref","git_base_sha","git_commit_count","git_head_ref","git_head_sha","git_range"]},"event":"release.updated","event_id":"event-0021","record_revisions":{"release:0.1.1":2},"release_version":"0.1.1","schema_version":2}
++{"data":{"row_count":2},"event":"audit.created","event_id":"event-0022","record_revisions":{"commit_audit_sheet":1},"release_version":"0.1.1","schema_version":2}
++{"data":{"updated_rows":2},"event":"audit.updated","event_id":"event-0023","record_revisions":{"commit_audit_sheet":2},"release_version":"0.1.1","schema_version":2}
++{"data":{"entry_ids":["entry-0001","entry-0002"],"synced_audit_rows":2},"event":"entry.batch_added","event_id":"event-0024","record_revisions":{"commit_audit_sheet":3,"entry:0.1.1/entry-0001":1,"entry:0.1.1/entry-0002":1,"release:0.1.1":3},"release_version":"0.1.1","schema_version":2}
++{"data":{"released_at":"2026-10-03"},"event":"release.finalized","event_id":"event-0025","record_revisions":{"release:0.1.1":4},"release_version":"0.1.1","schema_version":2}
+diff --git a/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/release.md b/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/release.md
+index 75b5b51..ba9edaa 100644
+--- a/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/release.md
++++ b/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/release.md
+@@ -3,16 +3,16 @@ schema_version: 2
+ object_type: release
+ versioning:
+   schema_version: 1
+-  revision: 10
++  revision: 11
+ version: 0.1.0
+-status: planned
++status: released
+ history_state: curated
+ title: ttsready 0.1.0
+-released_at: null
++released_at: "2026-10-02"
+ previous_version: null
+ cancel_reason: null
+ superseded_by: null
+-changelog_file: CHANGELOG.md
++changelog_file: docs/changelog.md
+ boundary_ref: null
+ source_refs: []
+ source_count: null
+diff --git a/.ledger/releaseledger/data/ledgers/main/releases/0.1.1/audit/commit-audit.yaml b/.ledger/releaseledger/data/ledgers/main/releases/0.1.1/audit/commit-audit.yaml
+new file mode 100644
+index 0000000..ee08e57
+--- /dev/null
++++ b/.ledger/releaseledger/data/ledgers/main/releases/0.1.1/audit/commit-audit.yaml
+@@ -0,0 +1,89 @@
++schema_version: 1
++object_type: commit_audit_sheet
++versioning:
++  schema_version: 1
++  revision: 3
++release_version: 0.1.1
++git_base_ref: v0.1.0
++git_base_sha: 86984b3c2bbc58ed1ed4bec5c7c267a4478f0284
++git_head_ref: HEAD
++git_head_sha: 1465be4ad1e989b04acdcee0ad5f1a9196485413
++git_range: 86984b3c2bbc58ed1ed4bec5c7c267a4478f0284..1465be4ad1e989b04acdcee0ad5f1a9196485413
++commit_count: 2
++rows:
++  - sha: cfaf3ede40e1f0dcd51c5858fd7210e1d3e52c4b
++    source_ref: git:cfaf3ede40e1f0dcd51c5858fd7210e1d3e52c4b
++    short_sha: cfaf3ed
++    changed_paths:
++      - tests/test_analysis_cache.py
++      - tests/test_cli.py
++      - tests/test_pipeline.py
++      - tests/test_reporting.py
++      - tests/test_reproducibility.py
++      - ttsready/cli.py
++      - ttsready/cli_help.py
++      - ttsready/models.py
++    stats:
++      files_changed: 8
++      insertions: 228
++      deletions: 2
++    inspected: true
++    inspected_paths:
++      - tests/test_cli.py
++      - tests/test_pipeline.py
++      - ttsready/cli.py
++      - ttsready/cli_help.py
++      - ttsready/models.py
++    observed_behavior:
++      CLI help stacks commands and option descriptions below their
++      labels at narrow terminal widths and retains the compact layout at wider widths.
++      The transient fallback default change in this commit is superseded by explicit
++      artifact mode handling in the next commit, so it is not presented as final default
++      behavior.
++    public_impact: public
++    decision: accepted
++    stale: false
++    evidence_subject: "feat: change fallback mode"
++    target_entry_id: entry-0002
++    notes: ""
++  - sha: 1465be4ad1e989b04acdcee0ad5f1a9196485413
++    source_ref: git:1465be4ad1e989b04acdcee0ad5f1a9196485413
++    short_sha: 1465be4
++    changed_paths:
++      - pyproject.toml
++      - tests/test_analysis_cache.py
++      - tests/test_pipeline.py
++      - tests/test_reporting.py
++      - tests/test_reproducibility.py
++      - tests/test_ssmd_input.py
++      - ttsready/analysis.py
++      - ttsready/input.py
++      - ttsready/models.py
++      - ttsready/pipeline.py
++      - ttsready/reproducibility.py
++    stats:
++      files_changed: 11
++      insertions: 448
++      deletions: 21
++    inspected: true
++    inspected_paths:
++      - pyproject.toml
++      - tests/test_ssmd_input.py
++      - tests/test_reproducibility.py
++      - ttsready/analysis.py
++      - ttsready/input.py
++      - ttsready/models.py
++      - ttsready/pipeline.py
++      - ttsready/reproducibility.py
++    observed_behavior:
++      Standalone SSMD headers and SSMD book metadata accept spell or
++      preserve modes for residual sequence fallback. Invalid values and conflicting
++      book metadata are rejected. The selected mode flows through TTS preparation, analysis
++      cache identity, and reproducibility locks; omitted settings retain the spell default.
++      The minimum ssmdconvert dependency is raised to 0.1.1.
++    public_impact: public
++    decision: accepted
++    stale: false
++    evidence_subject: "feat: use sequence fallback setting from ssmdconvert"
++    target_entry_id: entry-0001
++    notes: ""
+diff --git a/.ledger/releaseledger/data/ledgers/main/releases/0.1.1/entries/entry-0001.md b/.ledger/releaseledger/data/ledgers/main/releases/0.1.1/entries/entry-0001.md
+new file mode 100644
+index 0000000..2058577
+--- /dev/null
++++ b/.ledger/releaseledger/data/ledgers/main/releases/0.1.1/entries/entry-0001.md
+@@ -0,0 +1,29 @@
++---
++schema_version: 2
++object_type: release_entry
++versioning:
++  schema_version: 1
++  revision: 1
++entry_id: entry-0001
++release_version: 0.1.1
++kind: added
++summary: Added per-artifact control for spelling or preserving residual sequences
++status: accepted
++audience: null
++scopes: []
++source_refs:
++  - git:1465be4ad1e989b04acdcee0ad5f1a9196485413
++paths:
++  - ttsready/input.py
++  - ttsready/pipeline.py
++  - ttsready/reproducibility.py
++issues: []
++prs: []
++sources:
++  - git:1465be4ad1e989b04acdcee0ad5f1a9196485413
++contributors:
++  - "@holgern"
++breaking: false
++internal: false
++order: 1
++---
+diff --git a/.ledger/releaseledger/data/ledgers/main/releases/0.1.1/entries/entry-0002.md b/.ledger/releaseledger/data/ledgers/main/releases/0.1.1/entries/entry-0002.md
+new file mode 100644
+index 0000000..270aca4
+--- /dev/null
++++ b/.ledger/releaseledger/data/ledgers/main/releases/0.1.1/entries/entry-0002.md
+@@ -0,0 +1,29 @@
++---
++schema_version: 2
++object_type: release_entry
++versioning:
++  schema_version: 1
++  revision: 1
++entry_id: entry-0002
++release_version: 0.1.1
++kind: changed
++summary: Improved CLI help readability on narrow terminals
++status: accepted
++audience: null
++scopes: []
++source_refs:
++  - git:cfaf3ede40e1f0dcd51c5858fd7210e1d3e52c4b
++paths:
++  - tests/test_cli.py
++  - ttsready/cli.py
++  - ttsready/cli_help.py
++issues: []
++prs: []
++sources:
++  - git:cfaf3ede40e1f0dcd51c5858fd7210e1d3e52c4b
++contributors:
++  - "@holgern"
++breaking: false
++internal: false
++order: 2
++---
+diff --git a/.ledger/releaseledger/data/ledgers/main/releases/0.1.1/release.md b/.ledger/releaseledger/data/ledgers/main/releases/0.1.1/release.md
+new file mode 100644
+index 0000000..43832e6
+--- /dev/null
++++ b/.ledger/releaseledger/data/ledgers/main/releases/0.1.1/release.md
+@@ -0,0 +1,27 @@
++---
++schema_version: 2
++object_type: release
++versioning:
++  schema_version: 1
++  revision: 4
++version: 0.1.1
++status: released
++history_state: curated
++title: null
++released_at: "2026-10-03"
++previous_version: 0.1.0
++cancel_reason: null
++superseded_by: null
++changelog_file: docs/changelog.md
++boundary_ref: null
++source_refs: []
++source_count: null
++entry_count: 2
++artifact_count: 0
++git_base_ref: v0.1.0
++git_base_sha: 86984b3c2bbc58ed1ed4bec5c7c267a4478f0284
++git_head_ref: HEAD
++git_head_sha: 1465be4ad1e989b04acdcee0ad5f1a9196485413
++git_range: 86984b3c2bbc58ed1ed4bec5c7c267a4478f0284..1465be4ad1e989b04acdcee0ad5f1a9196485413
++git_commit_count: 2
++---
+diff --git a/.ledger/releaseledger/work/0.1.1/audit-decisions.yaml b/.ledger/releaseledger/work/0.1.1/audit-decisions.yaml
+new file mode 100644
+index 0000000..b88c010
+--- /dev/null
++++ b/.ledger/releaseledger/work/0.1.1/audit-decisions.yaml
+@@ -0,0 +1,43 @@
++rows:
++  - sha: cfaf3ede40e1f0dcd51c5858fd7210e1d3e52c4b
++    inspected: true
++    inspected_paths:
++      - tests/test_cli.py
++      - tests/test_pipeline.py
++      - ttsready/cli.py
++      - ttsready/cli_help.py
++      - ttsready/models.py
++    observed_behavior: >-
++      CLI help stacks commands and option descriptions below their labels at narrow
++      terminal widths and retains the compact layout at wider widths. The transient
++      fallback default change in this commit is superseded by explicit artifact mode
++      handling in the next commit, so it is not presented as final default behavior.
++    public_impact: public
++    decision: accepted
++    target_entry_key: null
++    target_entry_id: null
++    notes: ""
++    stale: false
++  - sha: 1465be4ad1e989b04acdcee0ad5f1a9196485413
++    inspected: true
++    inspected_paths:
++      - pyproject.toml
++      - tests/test_ssmd_input.py
++      - tests/test_reproducibility.py
++      - ttsready/analysis.py
++      - ttsready/input.py
++      - ttsready/models.py
++      - ttsready/pipeline.py
++      - ttsready/reproducibility.py
++    observed_behavior: >-
++      Standalone SSMD headers and SSMD book metadata accept spell or preserve modes
++      for residual sequence fallback. Invalid values and conflicting book metadata
++      are rejected. The selected mode flows through TTS preparation, analysis cache
++      identity, and reproducibility locks; omitted settings retain the spell default.
++      The minimum ssmdconvert dependency is raised to 0.1.1.
++    public_impact: public
++    decision: accepted
++    target_entry_key: null
++    target_entry_id: null
++    notes: ""
++    stale: false
+diff --git a/.ledger/releaseledger/work/0.1.1/audit.yaml b/.ledger/releaseledger/work/0.1.1/audit.yaml
+new file mode 100644
+index 0000000..c4c291a
+--- /dev/null
++++ b/.ledger/releaseledger/work/0.1.1/audit.yaml
+@@ -0,0 +1,62 @@
++schema_version: 1
++object_type: commit_audit_sheet
++versioning:
++  schema_version: 1
++  revision: 1
++release_version: 0.1.1
++git_base_ref: v0.1.0
++git_base_sha: 86984b3c2bbc58ed1ed4bec5c7c267a4478f0284
++git_head_ref: HEAD
++git_head_sha: 1465be4ad1e989b04acdcee0ad5f1a9196485413
++git_range: 86984b3c2bbc58ed1ed4bec5c7c267a4478f0284..1465be4ad1e989b04acdcee0ad5f1a9196485413
++commit_count: 2
++rows:
++  - sha: cfaf3ede40e1f0dcd51c5858fd7210e1d3e52c4b
++    source_ref: git:cfaf3ede40e1f0dcd51c5858fd7210e1d3e52c4b
++    short_sha: cfaf3ed
++    changed_paths:
++      - tests/test_analysis_cache.py
++      - tests/test_cli.py
++      - tests/test_pipeline.py
++      - tests/test_reporting.py
++      - tests/test_reproducibility.py
++      - ttsready/cli.py
++      - ttsready/cli_help.py
++      - ttsready/models.py
++    stats:
++      files_changed: 8
++      insertions: 228
++      deletions: 2
++    inspected: false
++    inspected_paths: []
++    observed_behavior: ""
++    public_impact: unknown
++    decision: needs_review
++    stale: false
++    evidence_subject: "feat: change fallback mode"
++  - sha: 1465be4ad1e989b04acdcee0ad5f1a9196485413
++    source_ref: git:1465be4ad1e989b04acdcee0ad5f1a9196485413
++    short_sha: 1465be4
++    changed_paths:
++      - pyproject.toml
++      - tests/test_analysis_cache.py
++      - tests/test_pipeline.py
++      - tests/test_reporting.py
++      - tests/test_reproducibility.py
++      - tests/test_ssmd_input.py
++      - ttsready/analysis.py
++      - ttsready/input.py
++      - ttsready/models.py
++      - ttsready/pipeline.py
++      - ttsready/reproducibility.py
++    stats:
++      files_changed: 11
++      insertions: 448
++      deletions: 21
++    inspected: false
++    inspected_paths: []
++    observed_behavior: ""
++    public_impact: unknown
++    decision: needs_review
++    stale: false
++    evidence_subject: "feat: use sequence fallback setting from ssmdconvert"
+diff --git a/.ledger/releaseledger/work/0.1.1/entries.yaml b/.ledger/releaseledger/work/0.1.1/entries.yaml
+new file mode 100644
+index 0000000..94755c5
+--- /dev/null
++++ b/.ledger/releaseledger/work/0.1.1/entries.yaml
+@@ -0,0 +1,41 @@
++schema: releaseledger.entry-batch.v1
++operation: create
++schema_version: 1
++object_type: release_entry_batch
++release_version: 0.1.1
++git_base_ref: 86984b3c2bbc58ed1ed4bec5c7c267a4478f0284
++git_base_sha: 86984b3c2bbc58ed1ed4bec5c7c267a4478f0284
++git_head_ref: 1465be4ad1e989b04acdcee0ad5f1a9196485413
++git_head_sha: 1465be4ad1e989b04acdcee0ad5f1a9196485413
++include_merges: nontrivial
++entries:
++  - kind: added
++    summary: Added per-artifact control for spelling or preserving residual sequences
++    status: accepted
++    source_refs:
++      - git:1465be4ad1e989b04acdcee0ad5f1a9196485413
++    paths:
++      - ttsready/input.py
++      - ttsready/pipeline.py
++      - ttsready/reproducibility.py
++    sources:
++      - git:1465be4ad1e989b04acdcee0ad5f1a9196485413
++    prs: []
++    issues: []
++    contributors:
++      - "@holgern"
++  - kind: changed
++    summary: Improved CLI help readability on narrow terminals
++    status: accepted
++    source_refs:
++      - git:cfaf3ede40e1f0dcd51c5858fd7210e1d3e52c4b
++    paths:
++      - tests/test_cli.py
++      - ttsready/cli.py
++      - ttsready/cli_help.py
++    sources:
++      - git:cfaf3ede40e1f0dcd51c5858fd7210e1d3e52c4b
++    prs: []
++    issues: []
++    contributors:
++      - "@holgern"
+diff --git a/.ledger/releaseledger/work/0.1.1/evidence/1465be4.patch b/.ledger/releaseledger/work/0.1.1/evidence/1465be4.patch
+new file mode 100644
+index 0000000..95bcf43
+--- /dev/null
++++ b/.ledger/releaseledger/work/0.1.1/evidence/1465be4.patch
+@@ -0,0 +1,816 @@
++ pyproject.toml                |   2 +-
++ tests/test_analysis_cache.py  |  32 ++++++++++-
++ tests/test_pipeline.py        |  47 +++++++++++++++
++ tests/test_reporting.py       |  48 +++++++++++++++-
++ tests/test_reproducibility.py |  60 +++++++++++++++++--
++ tests/test_ssmd_input.py      | 131 +++++++++++++++++++++++++++++++++++++++++-
++ ttsready/analysis.py          |  15 ++++-
++ ttsready/input.py             |  70 +++++++++++++++++++++-
++ ttsready/models.py            |  16 +++++-
++ ttsready/pipeline.py          |  36 ++++++++++--
++ ttsready/reproducibility.py   |  12 +++-
++ 11 files changed, 448 insertions(+), 21 deletions(-)
++
++diff --git a/pyproject.toml b/pyproject.toml
++index 6419ab9..201ce47 100644
++--- a/pyproject.toml
+++++ b/pyproject.toml
++@@ -26,7 +26,7 @@ classifiers = [
++ ]
++ dependencies = [
++   "ssmd>=0.9.2,<0.10",
++-  "ssmdconvert>=0.1,<0.2",
+++  "ssmdconvert>=0.1.1,<0.2",
++   "phrasplit>=0.3.9,<1",
++   "spokenform>=0.4.5,<1",
++   "pyyaml>=6,<7",
++diff --git a/tests/test_analysis_cache.py b/tests/test_analysis_cache.py
++index d8b0bdb..2851dfc 100644
++--- a/tests/test_analysis_cache.py
+++++ b/tests/test_analysis_cache.py
++@@ -10,7 +10,7 @@ from ssmdconvert import SourceInfo as BookSourceInfo
++ from typer.testing import CliRunner
++
++ import ttsready.input as input_loader
++-import ttsready.pipeline as pipeline
+++from ttsready.analysis import prepare_cached_report
++ from ttsready.cli import app
++
++ runner = CliRunner()
++@@ -31,6 +31,36 @@ def _report(source: Path, *, format: str = "json"):
++     return json.loads(result.output)
++
++
+++def test_cached_analysis_identity_includes_fallback_mode(monkeypatch, tmp_path: Path) -> None:
+++    source = tmp_path / "policy.ssmd.md"
+++    source.write_text(_ssmd("Policy", "A residual sequence remains."), encoding="utf-8")
+++    monkeypatch.setenv("TTSREADY_CACHE_DIR", str(tmp_path / "cache"))
+++    original = input_loader.load(source)
+++    spell = replace(
+++        original,
+++        metadata={**original.metadata, "sequence_fallback_mode": "spell"},
+++    )
+++    preserve = replace(
+++        original,
+++        metadata={**original.metadata, "sequence_fallback_mode": "preserve"},
+++    )
+++    options = {
+++        "language": None,
+++        "max_paragraph_chars": 1000,
+++        "apply_spokenform": True,
+++        "include_titles": False,
+++        "sidecar": None,
+++    }
+++
+++    spell_report = prepare_cached_report(spell, **options)
+++    preserve_report = prepare_cached_report(preserve, **options)
+++
+++    assert spell_report.analysis_id != preserve_report.analysis_id
+++    assert spell_report.normalization_profile["sequence_fallback_mode"] == "spell"
+++    assert preserve_report.normalization_profile["sequence_fallback_mode"] == "preserve"
+++    assert len(list((tmp_path / "cache" / "chapters").glob("*.json"))) == 2
+++
+++
++ def test_stale_context_does_not_recompute_spokenform(monkeypatch, tmp_path: Path) -> None:
++     source = tmp_path / "book.ssmd.md"
++     source.write_text(_ssmd("Book", "He met Dr. Smith."), encoding="utf-8")
++diff --git a/tests/test_pipeline.py b/tests/test_pipeline.py
++index 433ff0d..2a52293 100644
++--- a/tests/test_pipeline.py
+++++ b/tests/test_pipeline.py
++@@ -4,7 +4,10 @@ import sys
++ from pathlib import Path
++ from types import SimpleNamespace
++
+++import pytest
+++
++ import ttsready.pipeline as pipeline
+++from ttsready.errors import TTSReadyError
++ from ttsready.models import Document, RenderOptions, Section, SourceInfo
++
++
++@@ -24,6 +27,50 @@ def test_source_paragraphs_join_soft_line_wraps() -> None:
++     ]
++
++
+++def test_normalization_profile_resolves_document_policy() -> None:
+++    spell = pipeline.normalization_profile("en")
+++    preserve = pipeline.normalization_profile("en", sequence_fallback_mode="preserve")
+++
+++    assert spell.sequence_fallback_mode == "spell"
+++    assert preserve.sequence_fallback_mode == "preserve"
+++    with pytest.raises(TTSReadyError, match="sequence_fallback_mode must be"):
+++        pipeline.normalization_profile("en", sequence_fallback_mode="SPELL")
+++
+++
+++def test_spokenform_receives_fallback_mode_with_local_language(monkeypatch) -> None:
+++    received = {}
+++
+++    def fake_prepare(text: str, **kwargs):
+++        received.update(kwargs)
+++        return SimpleNamespace(spoken_text=text, warnings=(), stages=(), source_replacements=())
+++
+++    monkeypatch.setitem(sys.modules, "spokenform", SimpleNamespace(prepare=fake_prepare))
+++    pipeline._spoken(
+++        "in-system target/destination",
+++        context_id="context-1",
+++        language="fr",
+++        sequence_fallback_mode="preserve",
+++        enabled=True,
+++        section_id="section-1",
+++        section_locator_value="id:section-1",
+++        section_index=1,
+++        source_paragraph=0,
+++        sidecar=None,
+++    )
+++
+++    assert received["language"] == "fr"
+++    assert received["sequence_fallback_mode"] == "preserve"
+++
+++
+++def test_plan_reports_artifact_fallback_mode() -> None:
+++    source_document = document("in-system target/destination")
+++    source_document.metadata["sequence_fallback_mode"] = "preserve"
+++
+++    plan = pipeline.prepare_tts_plan(source_document, apply_spokenform=False)
+++
+++    assert plan.report.normalization_profile["sequence_fallback_mode"] == "preserve"
+++
+++
++ def test_prepare_without_spokenform_keeps_short_paragraphs() -> None:
++     result = pipeline.prepare(
++         document("One paragraph.\n\nTwo paragraph."),
++diff --git a/tests/test_reporting.py b/tests/test_reporting.py
++index ac0349d..f22af29 100644
++--- a/tests/test_reporting.py
+++++ b/tests/test_reporting.py
++@@ -5,6 +5,7 @@ from pathlib import Path
++
++ import pytest
++
+++from ttsready.input import load_ssmd
++ from ttsready.models import (
++     ContextRecord,
++     ConversionReport,
++@@ -17,7 +18,7 @@ from ttsready.models import (
++     SpokenformStats,
++ )
++ from ttsready.output import OutputArtifact, OutputPlan
++-from ttsready.pipeline import prepare as prepare_document
+++from ttsready.pipeline import prepare
++ from ttsready.reporting import (
++     format_preflight,
++     json_report,
++@@ -29,6 +30,51 @@ from ttsready.reporting import (
++ )
++
++
+++def prepare_with_fallback_mode(mode: str, text: str):
+++    source = chr(10).join(
+++        [
+++            "---",
+++            'ssmd_version: "0.9"',
+++            "language: en-US",
+++            f"sequence_fallback_mode: {mode}",
+++            "---",
+++            text,
+++            "",
+++        ]
+++    )
+++    return prepare(load_ssmd(source), include_titles=False)
+++
+++
+++def test_markdown_report_omits_residual_fallback_from_real_pipeline() -> None:
+++    result = prepare_with_fallback_mode(
+++        "preserve",
+++        "Dr. Smith had 3 items in-system and target/destination. Legal section 3.",
+++    )
+++    report = result.report
+++    assert report is not None
+++    rendered = markdown_report(report)
+++
+++    assert "in-system" in result.text and "target/destination" in result.text
+++    assert report.spokenform.rules["abbr:Dr."] == 1
+++    assert any(change.rule == "sequence.legal" for change in report.changes)
+++    assert "fallback.sequence" not in report.spokenform.rules
+++    assert "sequence_fallback" not in report.spokenform.stage_edits
+++    assert "fallback.sequence" not in rendered
+++    assert "| sequence_fallback |" not in rendered
+++
+++
+++def test_markdown_report_includes_real_spell_fallback_edits() -> None:
+++    result = prepare_with_fallback_mode("spell", "in-system target/destination")
+++    report = result.report
+++    assert report is not None
+++    rendered = markdown_report(report)
+++
+++    assert report.spokenform.rules["fallback.sequence"] == 2
+++    assert report.spokenform.stage_edits["sequence_fallback"] == 2
+++    assert "fallback.sequence" in rendered
+++    assert "| sequence_fallback |" in rendered
+++
+++
++ def make_report() -> ConversionReport:
++     return ConversionReport(
++         source_path="book.epub",
++diff --git a/tests/test_reproducibility.py b/tests/test_reproducibility.py
++index 4e32e6f..5117b2a 100644
++--- a/tests/test_reproducibility.py
+++++ b/tests/test_reproducibility.py
++@@ -25,10 +25,20 @@ from ttsready.sidecar import (
++ runner = CliRunner()
++
++
++-def _source(tmp_path: Path, body: str = "He met Dr. Smith and found 3 items.") -> Path:
+++def _source(
+++    tmp_path: Path,
+++    body: str = "He met Dr. Smith and found 3 items.",
+++    *,
+++    sequence_fallback_mode: str | None = None,
+++) -> Path:
++     source = tmp_path / "book.ssmd.md"
+++    fallback = (
+++        f"sequence_fallback_mode: {sequence_fallback_mode}\n"
+++        if sequence_fallback_mode is not None
+++        else ""
+++    )
++     source.write_text(
++-        f'---\nssmd_version: "0.9"\ntitle: "Book"\nlanguage: en-US\n---\n{body}\n',
+++        f'---\nssmd_version: "0.9"\ntitle: "Book"\nlanguage: en-US\n{fallback}---\n{body}\n',
++         encoding="utf-8",
++     )
++     return source
++@@ -73,6 +83,7 @@ def test_lock_creation_is_deterministic_and_verification_is_strict(tmp_path: Pat
++     assert first_record["schema"] == "ttsready.lock.v1"
++     assert next(iter(first_record["chapters"].values())).keys() == {"sha256"}
++     assert first_record["normalization_profile"]["language"] == "en-US"
+++    assert first_record["normalization_profile"]["sequence_fallback_mode"] == "spell"
++     assert len(first_record["normalization_profile"]["pronunciation_profile_sha256"]) == 64
++
++     profile_options = asdict(pipeline.normalization_profile("en-US"))
++@@ -98,6 +109,39 @@ def test_lock_creation_is_deterministic_and_verification_is_strict(tmp_path: Pat
++     assert "normalization_profile.language" in language_drift.output
++
++
+++def test_fallback_modes_have_distinct_normalization_fingerprints() -> None:
+++    spell = asdict(pipeline.normalization_profile("en", sequence_fallback_mode="spell"))
+++    preserve = asdict(pipeline.normalization_profile("en", sequence_fallback_mode="preserve"))
+++
+++    assert spell != preserve
+++    assert (
+++        normalization_fingerprints("en", spell, None)["options_sha256"]
+++        != (normalization_fingerprints("en", preserve, None)["options_sha256"])
+++    )
+++
+++
+++def test_lock_records_fallback_mode_and_verify_detects_mode_drift(tmp_path: Path) -> None:
+++    source = _source(tmp_path, sequence_fallback_mode="preserve")
+++    lock_path = tmp_path / "book.lock.json"
+++
+++    created = _create_lock(source, lock_path)
+++
+++    assert created.exit_code == 0, created.output
+++    record = json.loads(lock_path.read_text(encoding="utf-8"))
+++    assert record["normalization_profile"]["sequence_fallback_mode"] == "preserve"
+++
+++    source.write_text(
+++        source.read_text(encoding="utf-8").replace(
+++            "sequence_fallback_mode: preserve", "sequence_fallback_mode: spell"
+++        ),
+++        encoding="utf-8",
+++    )
+++    verified = runner.invoke(app, ["verify", str(source), "--lock", str(lock_path)])
+++
+++    assert verified.exit_code == 1
+++    assert "normalization_profile.sequence_fallback_mode" in verified.output
+++
+++
++ def test_lock_verification_reports_runtime_version_drift(tmp_path: Path, monkeypatch) -> None:
++     source = _source(tmp_path)
++     lock_path = tmp_path / "book.lock.json"
++@@ -157,14 +201,19 @@ def test_lock_and_freeze_support_ssmdbook_artifacts(tmp_path: Path) -> None:
++             'ssmd_version: "0.9"',
++             'title: "Chapter"',
++             "language: en-US",
+++            "sequence_fallback_mode: preserve",
++             "---",
++-            "Dr. found 3 items.",
+++            "Dr. found 3 items in-system target/destination.",
++             "",
++         ]
++     )
++     book = Book(
++         source=BookSourceInfo(format="epub", media_type="application/epub+zip", name="source.epub"),
++-        metadata={"title": "Book", "language": "en-US"},
+++        metadata={
+++            "title": "Book",
+++            "language": "en-US",
+++            "sequence_fallback_mode": "preserve",
+++        },
++         chapters=(BookChapter("chapter-0001", 1, "Chapter", chapter_ssmd),),
++         source_sha256="a" * 64,
++         source_chapter_count=1,
++@@ -183,6 +232,9 @@ def test_lock_and_freeze_support_ssmdbook_artifacts(tmp_path: Path) -> None:
++     assert frozen.exit_code == 0, frozen.output
++     frozen_book = load_book_bundle(frozen_path)
++     assert '[Dr.]{sub="Doctor"}' in frozen_book.chapters[0].ssmd
+++    assert frozen_book.metadata["sequence_fallback_mode"] == "preserve"
+++    assert "sequence_fallback_mode: preserve" in frozen_book.chapters[0].ssmd
+++    assert "in-system target/destination" in frozen_book.chapters[0].ssmd
++     assert '[3]{sub="three"}' in frozen_book.chapters[0].ssmd
++
++
++diff --git a/tests/test_ssmd_input.py b/tests/test_ssmd_input.py
++index e3f635f..06d2bba 100644
++--- a/tests/test_ssmd_input.py
+++++ b/tests/test_ssmd_input.py
++@@ -1,19 +1,27 @@
++ from __future__ import annotations
++
++ import hashlib
+++from dataclasses import replace
++ from pathlib import Path
++
+++import pytest
++ import spokenform
++ from ssmdconvert import Book, BookChapter, write_book_bundle
++ from ssmdconvert import SourceInfo as BookSourceInfo
++ from ssmdconvert import convert as convert_ssmd
++
+++from ttsready.errors import TTSReadyError
++ from ttsready.input import load
++ from ttsready.pipeline import prepare
++
++
++-def ssmd(title: str, body: str) -> str:
++-    return f'---\nssmd_version: "0.9"\ntitle: {title}\nlanguage: en-US\n---\n{body}\n'
+++def ssmd(title: str, body: str, *, sequence_fallback_mode: str | None = None) -> str:
+++    fallback = (
+++        f"sequence_fallback_mode: {sequence_fallback_mode}\n"
+++        if sequence_fallback_mode is not None
+++        else ""
+++    )
+++    return f'---\nssmd_version: "0.9"\ntitle: {title}\nlanguage: en-US\n{fallback}---\n{body}\n'
++
++
++ def book() -> Book:
++@@ -45,6 +53,34 @@ def book() -> Book:
++     )
++
++
+++_MISSING = object()
+++
+++
+++def _book_with_fallback_modes(
+++    *,
+++    manifest_mode: object = _MISSING,
+++    chapter_modes: tuple[object, ...] = (),
+++) -> Book:
+++    original = book()
+++    metadata = dict(original.metadata)
+++    if manifest_mode is not _MISSING:
+++        metadata["sequence_fallback_mode"] = manifest_mode
+++    chapters = []
+++    for index, chapter in enumerate(original.chapters):
+++        if index < len(chapter_modes):
+++            mode = chapter_modes[index]
+++            serialized_mode = "null" if mode is None else str(mode)
+++            chapter = replace(
+++                chapter,
+++                ssmd=chapter.ssmd.replace(
+++                    "language: en-US\n",
+++                    f"language: en-US\nsequence_fallback_mode: {serialized_mode}\n",
+++                ),
+++            )
+++        chapters.append(chapter)
+++    return replace(original, metadata=metadata, chapters=tuple(chapters))
+++
+++
++ def test_load_standalone_ssmd_retains_structure_and_fingerprint(tmp_path: Path) -> None:
++     source = tmp_path / "sample.ssmd.md"
++     source.write_text(ssmd("Sample", 'Hello [world]{ph="wɝːld"}.'), encoding="utf-8")
++@@ -53,6 +89,7 @@ def test_load_standalone_ssmd_retains_structure_and_fingerprint(tmp_path: Path)
++
++     assert document.source.format == "ssmd"
++     assert document.metadata["title"] == "Sample"
+++    assert document.metadata["sequence_fallback_mode"] == "spell"
++     assert document.sections[0].text == "Hello world."
++     assert document.sections[0].ssmd is not None
++     assert document.sections[0].structure is not None
++@@ -63,6 +100,25 @@ def test_load_standalone_ssmd_retains_structure_and_fingerprint(tmp_path: Path)
++     assert document.content_fingerprint == load(source).content_fingerprint
++
++
+++@pytest.mark.parametrize("value", ["unknown", "1", "null", "[]"])
+++def test_load_standalone_rejects_invalid_sequence_fallback_mode(tmp_path: Path, value: str) -> None:
+++    source = tmp_path / "invalid-mode.ssmd"
+++    source.write_text(
+++        f'---\nssmd_version: "0.9"\nsequence_fallback_mode: {value}\n---\nBody.\n',
+++        encoding="utf-8",
+++    )
+++
+++    with pytest.raises(TTSReadyError, match="sequence_fallback_mode must be"):
+++        load(source)
+++
+++
+++def test_load_standalone_consumes_explicit_sequence_fallback_mode(tmp_path: Path) -> None:
+++    source = tmp_path / "preserve.ssmd"
+++    source.write_text(ssmd("Sample", "Body.", sequence_fallback_mode="preserve"), encoding="utf-8")
+++
+++    assert load(source).metadata["sequence_fallback_mode"] == "preserve"
+++
+++
++ def test_load_normalizes_crlf_before_paragraph_processing(tmp_path: Path) -> None:
++     source = tmp_path / "paragraphs.ssmd.md"
++     source.write_bytes(
++@@ -95,6 +151,74 @@ def test_load_book_bundle_uses_manifest_chapter_order_and_hashes(tmp_path: Path)
++     assert document.content_fingerprint is not None
++
++
+++@pytest.mark.parametrize("mode", ["spell", "preserve"])
+++def test_load_book_uses_manifest_mode_and_matching_chapter_mirrors(
+++    tmp_path: Path, mode: str
+++) -> None:
+++    source = tmp_path / "mode.ssmdbook"
+++    write_book_bundle(
+++        _book_with_fallback_modes(manifest_mode=mode, chapter_modes=(mode, mode)),
+++        source,
+++        format="directory",
+++    )
+++
+++    document = load(source)
+++
+++    assert document.metadata["sequence_fallback_mode"] == mode
+++
+++
+++def test_legacy_book_defaults_to_spell_or_uses_consistent_chapter_mode(tmp_path: Path) -> None:
+++    default_source = tmp_path / "legacy.ssmdbook"
+++    write_book_bundle(book(), default_source, format="directory")
+++    chapter_source = tmp_path / "chapter-mode.ssmdbook"
+++    write_book_bundle(
+++        _book_with_fallback_modes(chapter_modes=("preserve", "preserve")),
+++        chapter_source,
+++        format="directory",
+++    )
+++
+++    assert load(default_source).metadata["sequence_fallback_mode"] == "spell"
+++    assert load(chapter_source).metadata["sequence_fallback_mode"] == "preserve"
+++
+++
+++def test_book_rejects_manifest_chapter_mode_conflict_with_chapter_id(tmp_path: Path) -> None:
+++    source = tmp_path / "conflict.ssmdbook"
+++    write_book_bundle(
+++        _book_with_fallback_modes(manifest_mode="spell", chapter_modes=("preserve",)),
+++        source,
+++        format="directory",
+++    )
+++
+++    with pytest.raises(TTSReadyError, match="chapter-0002.*conflicts with manifest"):
+++        load(source)
+++
+++
+++def test_book_rejects_conflicting_chapter_modes_without_manifest(tmp_path: Path) -> None:
+++    source = tmp_path / "conflicting-chapters.ssmdbook"
+++    write_book_bundle(
+++        _book_with_fallback_modes(chapter_modes=("spell", "preserve")),
+++        source,
+++        format="directory",
+++    )
+++
+++    with pytest.raises(TTSReadyError, match="chapter-0002.*chapter-0001"):
+++        load(source)
+++
+++
+++@pytest.mark.parametrize("location", ["manifest", "chapter"])
+++def test_book_rejects_invalid_sequence_fallback_mode(tmp_path: Path, location: str) -> None:
+++    source = tmp_path / "invalid-mode.ssmdbook"
+++    bundle = (
+++        _book_with_fallback_modes(manifest_mode="invalid")
+++        if location == "manifest"
+++        else _book_with_fallback_modes(chapter_modes=("invalid",))
+++    )
+++    write_book_bundle(bundle, source, format="directory")
+++
+++    with pytest.raises(TTSReadyError, match="sequence_fallback_mode must be"):
+++        load(source)
+++
+++
++ def test_bundle_zip_loads_and_native_sub_is_applied_without_spokenform(tmp_path: Path) -> None:
++     source = tmp_path / "sample.ssmdbook.zip"
++     write_book_bundle(book(), source, format="zip")
++@@ -165,12 +289,15 @@ def test_ssmdconvert_output_is_ttsready_canonical_input(tmp_path: Path) -> None:
++     source.write_text("The starship arrived.\n", encoding="utf-8")
++
++     conversion = convert_ssmd(source, title="Chapter", language="en-US")
+++    assert "sequence_fallback_mode: spell" in conversion.ssmd
++     canonical_path = tmp_path / "chapter.ssmd.md"
+++    assert conversion.ssmd is not None
++     canonical_path.write_text(conversion.ssmd, encoding="utf-8", newline="")
++
++     document = load(canonical_path)
++     result = prepare(document, apply_spokenform=False, include_titles=False)
++
+++    assert document.metadata["sequence_fallback_mode"] == "spell"
++     assert document.sections[0].ssmd == conversion.ssmd
++     assert result.text.strip() == "The starship arrived."
++     assert result.report is not None
++diff --git a/ttsready/analysis.py b/ttsready/analysis.py
++index a8f1d36..5f0644e 100644
++--- a/ttsready/analysis.py
+++++ b/ttsready/analysis.py
++@@ -393,10 +393,21 @@ def prepare_cached_report(
++ ) -> ConversionReport:
++     """Analyze or reuse per-chapter results, then persist a versioned snapshot."""
++     from .models import RenderOptions
++-    from .pipeline import _tool_versions, normalization_profile, prepare
+++    from .pipeline import (
+++        _document_sequence_fallback_mode,
+++        _tool_versions,
+++        normalization_profile,
+++        prepare,
+++    )
++
++     effective_language = str(language or document.metadata.get("language") or "en")
++-    profile = asdict(normalization_profile(effective_language))
+++    fallback_mode = _document_sequence_fallback_mode(document)
+++    profile = asdict(
+++        normalization_profile(
+++            effective_language,
+++            sequence_fallback_mode=fallback_mode,
+++        )
+++    )
++     runtime = _tool_versions()
++     profile_fingerprint = _fingerprint("profile", profile)
++     runtime_fingerprint = _fingerprint("runtime", runtime)
++diff --git a/ttsready/input.py b/ttsready/input.py
++index 0cb0f9c..495bbfe 100644
++--- a/ttsready/input.py
+++++ b/ttsready/input.py
++@@ -10,13 +10,27 @@ import ssmd as ssmd_library
++ from ssmdconvert import Book, BookChapter, load_book_bundle
++
++ from .errors import TTSReadyError, UnsupportedInputError
++-from .models import Document, Section, SourceInfo
+++from .models import (
+++    Document,
+++    Section,
+++    SourceInfo,
+++    resolve_sequence_fallback_mode,
+++)
++
++
++ def _sha256(data: bytes) -> str:
++     return hashlib.sha256(data).hexdigest()
++
++
+++def _resolve_artifact_sequence_fallback_mode(metadata: dict, *, label: str) -> str:
+++    try:
+++        return resolve_sequence_fallback_mode(metadata["sequence_fallback_mode"])
+++    except KeyError:
+++        return resolve_sequence_fallback_mode()
+++    except TTSReadyError as exc:
+++        raise TTSReadyError(f"{label}: {exc}") from exc
+++
+++
++ def _parse_ssmd(source: str, *, label: str):
++     source = source.replace("\r\n", "\n").replace("\r", "\n")
++     issues = ssmd_library.lint(source, profile="ssmd-core", dialect="0.9")
++@@ -99,7 +113,14 @@ def load_ssmd(
++     return Document(
++         source=SourceInfo(source_path or Path("<memory>"), "ssmd", "text/markdown"),
++         sections=[section],
++-        metadata={**structure.header, "title": document_title},
+++        metadata={
+++            **structure.header,
+++            "title": document_title,
+++            "sequence_fallback_mode": _resolve_artifact_sequence_fallback_mode(
+++                structure.header,
+++                label=f"SSMD document {label}",
+++            ),
+++        },
++         source_sha256=digest,
++         content_fingerprint=_content_fingerprint("ssmd", [(section.id, digest)]),
++     )
++@@ -114,6 +135,44 @@ def _load_standalone(path: Path) -> Document:
++     return load_ssmd(source, source_path=path, source_sha256=_sha256(raw))
++
++
+++def _resolve_book_sequence_fallback_mode(metadata: dict, sections: list[Section]) -> str:
+++    key = "sequence_fallback_mode"
+++    manifest_has_mode = key in metadata
+++    manifest_mode = _resolve_artifact_sequence_fallback_mode(
+++        metadata,
+++        label="SSMD book manifest",
+++    )
+++    chapter_modes = []
+++    for section in sections:
+++        if section.structure is None or key not in section.structure.header:
+++            continue
+++        chapter_mode = _resolve_artifact_sequence_fallback_mode(
+++            section.structure.header,
+++            label=f"SSMD book chapter {section.id!r}",
+++        )
+++        chapter_modes.append((section.id, chapter_mode))
+++
+++    if manifest_has_mode:
+++        for chapter_id, chapter_mode in chapter_modes:
+++            if chapter_mode != manifest_mode:
+++                raise TTSReadyError(
+++                    f"SSMD book chapter {chapter_id!r} sequence_fallback_mode "
+++                    f"{chapter_mode!r} conflicts with manifest value {manifest_mode!r}"
+++                )
+++        return manifest_mode
+++
+++    if not chapter_modes:
+++        return resolve_sequence_fallback_mode()
+++    first_chapter_id, first_mode = chapter_modes[0]
+++    for chapter_id, chapter_mode in chapter_modes[1:]:
+++        if chapter_mode != first_mode:
+++            raise TTSReadyError(
+++                "Conflicting sequence_fallback_mode values in SSMD book chapters "
+++                f"{first_chapter_id!r} and {chapter_id!r}"
+++            )
+++    return first_mode
+++
+++
++ def _load_book(path: Path) -> Document:
++     try:
++         book: Book = load_book_bundle(path)
++@@ -134,10 +193,15 @@ def _load_book(path: Path) -> Document:
++         sections.append(section)
++         chapter_hashes.append((chapter.id, section.chapter_sha256 or ""))
++
+++    metadata = dict(book.metadata)
+++    metadata["sequence_fallback_mode"] = _resolve_book_sequence_fallback_mode(
+++        book.metadata,
+++        sections,
+++    )
++     return Document(
++         source=SourceInfo(path, "ssmdbook", "application/vnd.ssmd.book"),
++         sections=sections,
++-        metadata=dict(book.metadata),
+++        metadata=metadata,
++         original_section_count=book.source_chapter_count or len(book.chapters),
++         source_sha256=book.source_sha256,
++         content_fingerprint=_content_fingerprint("ssmdbook", chapter_hashes),
++diff --git a/ttsready/models.py b/ttsready/models.py
++index 6c576e2..f391a48 100644
++--- a/ttsready/models.py
+++++ b/ttsready/models.py
++@@ -8,6 +8,20 @@ from typing import Any
++
++ from ssmd import ParseStructureResult
++
+++from .errors import TTSReadyError
+++
+++SEQUENCE_FALLBACK_MODES = frozenset({"spell", "preserve"})
+++DEFAULT_SEQUENCE_FALLBACK_MODE = "spell"
+++_MISSING_SEQUENCE_FALLBACK_MODE = object()
+++
+++
+++def resolve_sequence_fallback_mode(value: object = _MISSING_SEQUENCE_FALLBACK_MODE) -> str:
+++    if value is _MISSING_SEQUENCE_FALLBACK_MODE:
+++        return DEFAULT_SEQUENCE_FALLBACK_MODE
+++    if not isinstance(value, str) or value not in SEQUENCE_FALLBACK_MODES:
+++        raise TTSReadyError("sequence_fallback_mode must be 'spell' or 'preserve'")
+++    return value
+++
++
++ @dataclass(frozen=True, slots=True)
++ class RenderOptions:
++@@ -65,7 +79,7 @@ class NormalizationProfile:
++     normalize_line_whitespace: bool = False
++     collapse_blank_lines: bool = False
++     generic_acronym_mode: str = "known_only"
++-    sequence_fallback_mode: str = "preserve"
+++    sequence_fallback_mode: str = DEFAULT_SEQUENCE_FALLBACK_MODE
++     expand_structured: bool = True
++     expand_numbers: bool = True
++
++diff --git a/ttsready/pipeline.py b/ttsready/pipeline.py
++index a4c6457..7d1246a 100644
++--- a/ttsready/pipeline.py
+++++ b/ttsready/pipeline.py
++@@ -16,6 +16,7 @@ from .identifiers import change_id, file_sha256, section_locator, stable_id, tex
++ from .identifiers import context_id as make_context_id
++ from .input import load
++ from .models import (
+++    DEFAULT_SEQUENCE_FALLBACK_MODE,
++     ContextRecord,
++     ConversionReport,
++     ConversionResult,
++@@ -29,6 +30,7 @@ from .models import (
++     SpokenChange,
++     SpokenformStats,
++     TTSPlan,
+++    resolve_sequence_fallback_mode,
++ )
++ from .overrides import apply_overrides, find_overrides
++ from .planning import render_preview
++@@ -82,8 +84,21 @@ class _SSMDReplacement:
++     replacement: str
++
++
++-def normalization_profile(language: str) -> NormalizationProfile:
++-    return NormalizationProfile(language=language)
+++def normalization_profile(
+++    language: str,
+++    *,
+++    sequence_fallback_mode: str = DEFAULT_SEQUENCE_FALLBACK_MODE,
+++) -> NormalizationProfile:
+++    return NormalizationProfile(
+++        language=language,
+++        sequence_fallback_mode=resolve_sequence_fallback_mode(sequence_fallback_mode),
+++    )
+++
+++
+++def _document_sequence_fallback_mode(document: Document) -> str:
+++    if "sequence_fallback_mode" not in document.metadata:
+++        return resolve_sequence_fallback_mode()
+++    return resolve_sequence_fallback_mode(document.metadata["sequence_fallback_mode"])
++
++
++ def _authoritative_annotation(annotation: AnnotationSpan) -> bool:
++@@ -98,6 +113,7 @@ def _spoken(
++     *,
++     context_id: str,
++     language: str,
+++    sequence_fallback_mode: str,
++     enabled: bool,
++     section_id: str,
++     section_locator_value: str,
++@@ -127,7 +143,12 @@ def _spoken(
++
++         prepared = prepare_spokenform(
++             text,
++-            **asdict(normalization_profile(language)),
+++            **asdict(
+++                normalization_profile(
+++                    language,
+++                    sequence_fallback_mode=sequence_fallback_mode,
+++                )
+++            ),
++             protected_spans=(*protected_spans, *((match.start, match.end) for match in matches)),
++         )
++         stage_edit_counts: dict[str, int] = {}
++@@ -537,7 +558,13 @@ def prepare_tts_plan(
++     metadata_language = document.metadata.get("language")
++     selected_language = str(language or metadata_language or "en")
++     requested_language = str(language) if language is not None else None
++-    profile_options = asdict(normalization_profile(selected_language))
+++    selected_fallback_mode = _document_sequence_fallback_mode(document)
+++    profile_options = asdict(
+++        normalization_profile(
+++            selected_language,
+++            sequence_fallback_mode=selected_fallback_mode,
+++        )
+++    )
++     profile_hashes = normalization_fingerprints(selected_language, profile_options, sidecar)
++     tool_versions = _tool_versions()
++     section_stats = [
++@@ -603,6 +630,7 @@ def prepare_tts_plan(
++             raw,
++             context_id=context_key,
++             language=source_item.language or selected_language,
+++            sequence_fallback_mode=selected_fallback_mode,
++             enabled=apply_spokenform,
++             section_id=section_id,
++             section_index=section_index,
++diff --git a/ttsready/reproducibility.py b/ttsready/reproducibility.py
++index 222adf3..574bbde 100644
++--- a/ttsready/reproducibility.py
+++++ b/ttsready/reproducibility.py
++@@ -9,7 +9,7 @@ import tempfile
++ from pathlib import Path
++ from typing import Any
++
++-from .models import ConversionReport, Document
+++from .models import SEQUENCE_FALLBACK_MODES, ConversionReport, Document
++ from .sidecar import Sidecar
++
++ LOCK_SCHEMA = "ttsready.lock.v1"
++@@ -113,6 +113,7 @@ def create_lock_record(
++         "runtime_fingerprint": runtime_fingerprint(report.tool_versions),
++         "normalization_profile": {
++             "language": report.effective_language,
+++            "sequence_fallback_mode": report.normalization_profile["sequence_fallback_mode"],
++             **profile_hashes,
++         },
++         "prepared_output_sha256": _sha256(prepared_output.encode("utf-8")),
++@@ -179,8 +180,15 @@ def _validate_lock(value: Any) -> dict[str, Any]:
++         "pronunciation_profile_sha256",
++         "profile_sha256",
++     }
++-    if set(profile) != profile_fields:
+++    if set(profile) not in (profile_fields, profile_fields | {"sequence_fallback_mode"}):
++         raise ReproducibilityError("Lock normalization_profile has invalid fields")
+++    if "sequence_fallback_mode" in profile and (
+++        not isinstance(profile["sequence_fallback_mode"], str)
+++        or profile["sequence_fallback_mode"] not in SEQUENCE_FALLBACK_MODES
+++    ):
+++        raise ReproducibilityError(
+++            "Lock normalization_profile.sequence_fallback_mode must be 'spell' or 'preserve'"
+++        )
++     if not isinstance(profile["language"], str) or not profile["language"]:
++         raise ReproducibilityError("Lock normalization_profile.language must be a non-empty string")
++     for field in ("options_sha256", "pronunciation_profile_sha256", "profile_sha256"):
+diff --git a/.ledger/releaseledger/work/0.1.1/evidence/cfaf3ed.patch b/.ledger/releaseledger/work/0.1.1/evidence/cfaf3ed.patch
+new file mode 100644
+index 0000000..ebca8a9
+--- /dev/null
++++ b/.ledger/releaseledger/work/0.1.1/evidence/cfaf3ed.patch
+@@ -0,0 +1,357 @@
++ tests/test_analysis_cache.py  | 30 +++++++++++++++++++++
++ tests/test_cli.py             | 49 ++++++++++++++++++++++++++++++++++
++ tests/test_pipeline.py        | 43 ++++++++++++++++++++++++++++++
++ tests/test_reporting.py       | 26 ++++++++++++++++++
++ tests/test_reproducibility.py | 14 ++++++++++
++ ttsready/cli.py               |  4 ++-
++ ttsready/cli_help.py          | 62 +++++++++++++++++++++++++++++++++++++++++++
++ ttsready/models.py            |  2 +-
++ 8 files changed, 228 insertions(+), 2 deletions(-)
++
++diff --git a/tests/test_analysis_cache.py b/tests/test_analysis_cache.py
++index 5d049b0..d8b0bdb 100644
++--- a/tests/test_analysis_cache.py
+++++ b/tests/test_analysis_cache.py
++@@ -10,6 +10,7 @@ from ssmdconvert import SourceInfo as BookSourceInfo
++ from typer.testing import CliRunner
++
++ import ttsready.input as input_loader
+++import ttsready.pipeline as pipeline
++ from ttsready.cli import app
++
++ runner = CliRunner()
++@@ -121,3 +122,32 @@ def test_report_reuses_unaffected_chapter_analysis(monkeypatch, tmp_path: Path)
++
++     assert context.exit_code == 0, context.output
++     assert json.loads(context.output)["spoken_sentence_text"] == "The first chapter has three."
+++
+++
+++def test_sequence_policy_change_invalidates_spell_profile_cache(
+++    monkeypatch, tmp_path: Path
+++) -> None:
+++    source = tmp_path / "book.ssmd.md"
+++    source.write_text(_ssmd("Book", "in-system target/destination"), encoding="utf-8")
+++    monkeypatch.setenv("TTSREADY_CACHE_DIR", str(tmp_path / "cache"))
+++    preserve_profile = pipeline.normalization_profile
+++    monkeypatch.setattr(
+++        pipeline,
+++        "normalization_profile",
+++        lambda language: replace(preserve_profile(language), sequence_fallback_mode="spell"),
+++    )
+++
+++    spell_report = _report(source)
+++    assert spell_report["normalization_profile"]["sequence_fallback_mode"] == "spell"
+++    assert any(change["rule"] == "fallback.sequence" for change in spell_report["changes"])
+++
+++    monkeypatch.setattr(pipeline, "normalization_profile", preserve_profile)
+++    preserve_report = _report(source)
+++
+++    assert preserve_report["normalization_profile"]["sequence_fallback_mode"] == "preserve"
+++    assert spell_report["analysis_id"] != preserve_report["analysis_id"]
+++    spoken_text = preserve_report["contexts"][0]["spoken_text"]
+++    assert "in-system" in spoken_text
+++    assert "target/destination" in spoken_text
+++    assert all(change["rule"] != "fallback.sequence" for change in preserve_report["changes"])
+++    assert "sequence_fallback" not in preserve_report["spokenform"]["stage_edits"]
++diff --git a/tests/test_cli.py b/tests/test_cli.py
++index 0ff5f77..7e9cb99 100644
++--- a/tests/test_cli.py
+++++ b/tests/test_cli.py
++@@ -57,6 +57,55 @@ def test_root_help_lists_commands_without_source_argument() -> None:
++     assert "--report" not in result.output
++
++
+++@pytest.mark.parametrize("terminal_width", [40, 48, 60])
+++def test_report_help_is_readable_on_narrow_terminals(terminal_width: int) -> None:
+++    result = runner.invoke(
+++        cli.app,
+++        ["report", "--help"],
+++        terminal_width=terminal_width,
+++    )
+++
+++    assert result.exit_code == 0, result.output
+++    output_lines = result.output.splitlines()
+++    normalized = " ".join(result.output.split())
+++
+++    assert any(line.strip().startswith("--max-paragraph-chars ") for line in output_lines)
+++    assert any(line.strip() == "--spokenform / --no-spokenform" for line in output_lines)
+++    assert any(line.strip() == "--titles / --no-titles" for line in output_lines)
+++    assert any(line.strip().startswith("--format ") and "md|json" in line for line in output_lines)
+++    assert "Semantic TTS chunk limit after spokenform normalization." in normalized
+++
+++    option_index = next(
+++        index
+++        for index, line in enumerate(output_lines)
+++        if line.strip().startswith("--max-paragraph-chars ")
+++    )
+++    assert output_lines[option_index + 1].lstrip().startswith("Semantic TTS chunk limit")
+++    assert len(output_lines[option_index + 1]) - len(output_lines[option_index + 1].lstrip()) >= 6
+++
+++
+++def test_narrow_root_help_stacks_commands_and_descriptions() -> None:
+++    result = runner.invoke(cli.app, ["--help"], terminal_width=40)
+++
+++    assert result.exit_code == 0, result.output
+++    lines = result.output.splitlines()
+++    assert all(command in result.output for command in ("convert", "export", "report"))
+++
+++    report_index = lines.index("  report")
+++    assert lines[report_index + 1].startswith("      ")
+++    assert lines[report_index + 1].strip()
+++
+++
+++def test_report_help_keeps_compact_layout_on_wide_terminals() -> None:
+++    result = runner.invoke(cli.app, ["report", "--help"], terminal_width=80)
+++
+++    assert result.exit_code == 0, result.output
+++    assert any(
+++        line.startswith("  --config") and "YAML customization sidecar." in line
+++        for line in result.output.splitlines()
+++    )
+++
+++
++ def test_root_without_args_shows_help() -> None:
++     result = runner.invoke(cli.app, [])
++
++diff --git a/tests/test_pipeline.py b/tests/test_pipeline.py
++index 820f3e3..433ff0d 100644
++--- a/tests/test_pipeline.py
+++++ b/tests/test_pipeline.py
++@@ -39,6 +39,49 @@ def test_prepare_without_spokenform_keeps_short_paragraphs() -> None:
++     assert result.report.warnings == []
++
++
+++def test_normalization_profile_preserves_residual_sequences() -> None:
+++    assert pipeline.normalization_profile("en").sequence_fallback_mode == "preserve"
+++
+++
+++def test_residual_sequences_stay_lexical_and_structured_rules_remain_active() -> None:
+++    residual_text = (
+++        "in-system target/destination bot-pilots high-threat Barish-Estranza "
+++        "build-up penetration-testing we/somebody where/who ART EVAC"
+++    )
+++    structured_text = "Chapter 1 Null+1 3–2–1 2.0 etc."
+++    result = pipeline.prepare(document(f"{residual_text}\n{structured_text}"), language="en")
+++    report = result.report
+++    assert report is not None
+++
+++    for phrase in (
+++        "in-system",
+++        "target/destination",
+++        "bot-pilots",
+++        "high-threat",
+++        "Barish-Estranza",
+++        "build-up",
+++        "penetration-testing",
+++        "we/somebody",
+++        "where/who",
+++        "ART",
+++        "EVAC",
+++    ):
+++        assert phrase in result.text
+++    assert "i n hyphen s y s t e m" not in result.text
+++    assert "t a r g e t slash" not in result.text
+++    assert "B a r i s h hyphen" not in result.text
+++    assert all(change.rule != "fallback.sequence" for change in report.changes)
+++    assert "fallback.sequence" not in report.spokenform.rules
+++    assert "sequence_fallback" not in report.spokenform.stage_edits
+++
+++    assert "chapter one" in result.text
+++    assert "Null plus one" in result.text
+++    assert "two point zero" in result.text
+++    assert "et cetera" in result.text
+++    assert report.spokenform.rules["sequence.legal"] == 1
+++    assert report.spokenform.rules["sequence.math"] == 1
+++
+++
++ def test_title_is_optional() -> None:
++     with_title = pipeline.prepare(
++         document("Body.", title="Chapter One"),
++diff --git a/tests/test_reporting.py b/tests/test_reporting.py
++index 8570e4f..ac0349d 100644
++--- a/tests/test_reporting.py
+++++ b/tests/test_reporting.py
++@@ -8,12 +8,16 @@ import pytest
++ from ttsready.models import (
++     ContextRecord,
++     ConversionReport,
+++    Document,
+++    Section,
++     SectionStats,
++     SentenceContext,
+++    SourceInfo,
++     SpokenChange,
++     SpokenformStats,
++ )
++ from ttsready.output import OutputArtifact, OutputPlan
+++from ttsready.pipeline import prepare as prepare_document
++ from ttsready.reporting import (
++     format_preflight,
++     json_report,
++@@ -195,3 +199,25 @@ def test_write_report_accepts_explicit_format_without_suffix_and_rejects_conflic
++     assert json.loads(extensionless.read_text(encoding="utf-8"))["schema"] == ("ttsready.report.v2")
++     with pytest.raises(ValueError, match="conflicts"):
++         write_report(tmp_path / "report.md", report, format="json")
+++
+++
+++def test_markdown_report_omits_residual_fallback_from_real_pipeline() -> None:
+++    source_text = "in-system target/destination Barish-Estranza ART EVAC"
+++    document = Document(
+++        SourceInfo(Path("residual.txt"), "text", "text/plain"),
+++        [Section("section-1", source_text)],
+++        {"title": "Residual prose", "language": "en"},
+++    )
+++    prepared = prepare_document(document, language="en")
+++    report = prepared.report
+++    assert report is not None
+++    rendered = markdown_report(report)
+++
+++    assert all(
+++        phrase in prepared.text
+++        for phrase in ("in-system", "target/destination", "Barish-Estranza", "ART", "EVAC")
+++    )
+++    assert "fallback.sequence" not in rendered
+++    assert "| sequence_fallback |" not in rendered
+++    assert "fallback.sequence" not in report.spokenform.rules
+++    assert "sequence_fallback" not in report.spokenform.stage_edits
++diff --git a/tests/test_reproducibility.py b/tests/test_reproducibility.py
++index 0e17c0a..4e32e6f 100644
++--- a/tests/test_reproducibility.py
+++++ b/tests/test_reproducibility.py
++@@ -1,6 +1,7 @@
++ from __future__ import annotations
++
++ import json
+++from dataclasses import asdict
++ from pathlib import Path
++ from types import SimpleNamespace
++
++@@ -13,6 +14,7 @@ import ttsready.pipeline as pipeline
++ from ttsready.cli import app
++ from ttsready.input import load
++ from ttsready.pipeline import prepare
+++from ttsready.reproducibility import normalization_fingerprints
++ from ttsready.sidecar import (
++     Sidecar,
++     SpeechOverride,
++@@ -73,6 +75,18 @@ def test_lock_creation_is_deterministic_and_verification_is_strict(tmp_path: Pat
++     assert first_record["normalization_profile"]["language"] == "en-US"
++     assert len(first_record["normalization_profile"]["pronunciation_profile_sha256"]) == 64
++
+++    profile_options = asdict(pipeline.normalization_profile("en-US"))
+++    assert profile_options["sequence_fallback_mode"] == "preserve"
+++    lock_profile = first_record["normalization_profile"]
+++    assert (
+++        lock_profile["options_sha256"]
+++        == normalization_fingerprints("en-US", profile_options, None)["options_sha256"]
+++    )
+++    spell_options = {**profile_options, "sequence_fallback_mode": "spell"}
+++    assert (
+++        lock_profile["options_sha256"]
+++        != normalization_fingerprints("en-US", spell_options, None)["options_sha256"]
+++    )
++     verified = runner.invoke(app, ["verify", str(source), "--lock", str(first)])
++     assert verified.exit_code == 0, verified.output
++
++diff --git a/ttsready/cli.py b/ttsready/cli.py
++index 23911d3..a864431 100644
++--- a/ttsready/cli.py
+++++ b/ttsready/cli.py
++@@ -12,6 +12,7 @@ from spokenform.language import base_language
++
++ from . import __version__
++ from .analysis import AnalysisCacheError, load_cached_report, prepare_cached_report
+++from .cli_help import AdaptiveTyper, AdaptiveTyperGroup
++ from .context import context_payload, format_bug_report, format_context, render_context_json
++ from .errors import TTSReadyError
++ from .input import load
++@@ -184,7 +185,8 @@ ReportFormatOption = Annotated[
++     typer.Option("--format", help="Report format; inferred from -o when possible."),
++ ]
++
++-app = typer.Typer(
+++app = AdaptiveTyper(
+++    cls=AdaptiveTyperGroup,
++     add_completion=False,
++     no_args_is_help=True,
++     rich_markup_mode=None,
++diff --git a/ttsready/cli_help.py b/ttsready/cli_help.py
++new file mode 100644
++index 0000000..b3e7030
++--- /dev/null
+++++ b/ttsready/cli_help.py
++@@ -0,0 +1,62 @@
+++"""Adaptive narrow-terminal help formatting for the TTSReady CLI."""
+++
+++from __future__ import annotations
+++
+++from collections.abc import Sequence
+++from typing import Any
+++
+++import typer
+++from typer.core import TyperCommand, TyperGroup
+++
+++NARROW_HELP_WIDTH = 72
+++
+++# Typer exposes its context and formatter through the command class. Recent
+++# Typer versions vendor Click-compatible classes, so derive from that context
+++# rather than mixing exception types from a separately installed Click.
+++_BaseHelpContext = TyperCommand.context_class
+++_BaseHelpFormatter = _BaseHelpContext.formatter_class
+++
+++
+++class AdaptiveHelpFormatter(_BaseHelpFormatter):
+++    """Use stacked definition lists on narrow terminals."""
+++
+++    def write_dl(
+++        self,
+++        rows: Sequence[tuple[str, str]],
+++        col_max: int = 30,
+++        col_spacing: int = 2,
+++    ) -> None:
+++        rows = list(rows)
+++
+++        if self.width >= NARROW_HELP_WIDTH:
+++            super().write_dl(rows, col_max=col_max, col_spacing=col_spacing)
+++            return
+++
+++        for index, (term, description) in enumerate(rows):
+++            self.write(f"{'':>{self.current_indent}}{term}\n")
+++            if description:
+++                with self.indentation():
+++                    with self.indentation():
+++                        self.write_text(description)
+++            if index < len(rows) - 1:
+++                self.write("\n")
+++
+++
+++class AdaptiveHelpContext(_BaseHelpContext):
+++    formatter_class = AdaptiveHelpFormatter
+++
+++
+++class AdaptiveTyperCommand(TyperCommand):
+++    context_class = AdaptiveHelpContext
+++
+++
+++class AdaptiveTyperGroup(TyperGroup):
+++    context_class = AdaptiveHelpContext
+++
+++
+++class AdaptiveTyper(typer.Typer):
+++    """Typer app that assigns the adaptive command class by default."""
+++
+++    def command(self, *args: Any, **kwargs: Any) -> Any:
+++        kwargs.setdefault("cls", AdaptiveTyperCommand)
+++        return super().command(*args, **kwargs)
++diff --git a/ttsready/models.py b/ttsready/models.py
++index fd5dc9d..6c576e2 100644
++--- a/ttsready/models.py
+++++ b/ttsready/models.py
++@@ -65,7 +65,7 @@ class NormalizationProfile:
++     normalize_line_whitespace: bool = False
++     collapse_blank_lines: bool = False
++     generic_acronym_mode: str = "known_only"
++-    sequence_fallback_mode: str = "spell"
+++    sequence_fallback_mode: str = "preserve"
++     expand_structured: bool = True
++     expand_numbers: bool = True
+diff --git a/.ledger/releaseledger/work/0.1.1/evidence/manifest.json b/.ledger/releaseledger/work/0.1.1/evidence/manifest.json
+new file mode 100644
+index 0000000..fa442b7
+--- /dev/null
++++ b/.ledger/releaseledger/work/0.1.1/evidence/manifest.json
+@@ -0,0 +1,54 @@
++{
++  "candidate_count": 2,
++  "candidates": [
++    {
++      "additions": 228,
++      "deletions": 2,
++      "patch_file": "cfaf3ed.patch",
++      "patch_sha256": "4f8b5c1e9ae2662b1dc8cb14db60a24e1815f2f6e34441264c575ea336f55984",
++      "paths": [
++        "tests/test_analysis_cache.py",
++        "tests/test_cli.py",
++        "tests/test_pipeline.py",
++        "tests/test_reporting.py",
++        "tests/test_reproducibility.py",
++        "ttsready/cli.py",
++        "ttsready/cli_help.py",
++        "ttsready/models.py"
++      ],
++      "sha": "cfaf3ede40e1f0dcd51c5858fd7210e1d3e52c4b",
++      "short_sha": "cfaf3ed",
++      "source_ref": "git:cfaf3ede40e1f0dcd51c5858fd7210e1d3e52c4b"
++    },
++    {
++      "additions": 448,
++      "deletions": 21,
++      "patch_file": "1465be4.patch",
++      "patch_sha256": "d8e2b67d0cd170b07efdd53e3827dcc29c97d71cb97a022a352c580ce27ecb90",
++      "paths": [
++        "pyproject.toml",
++        "tests/test_analysis_cache.py",
++        "tests/test_pipeline.py",
++        "tests/test_reporting.py",
++        "tests/test_reproducibility.py",
++        "tests/test_ssmd_input.py",
++        "ttsready/analysis.py",
++        "ttsready/input.py",
++        "ttsready/models.py",
++        "ttsready/pipeline.py",
++        "ttsready/reproducibility.py"
++      ],
++      "sha": "1465be4ad1e989b04acdcee0ad5f1a9196485413",
++      "short_sha": "1465be4",
++      "source_ref": "git:1465be4ad1e989b04acdcee0ad5f1a9196485413"
++    }
++  ],
++  "git_base_ref": "86984b3c2bbc58ed1ed4bec5c7c267a4478f0284",
++  "git_base_sha": "86984b3c2bbc58ed1ed4bec5c7c267a4478f0284",
++  "git_head_ref": "1465be4ad1e989b04acdcee0ad5f1a9196485413",
++  "git_head_sha": "1465be4ad1e989b04acdcee0ad5f1a9196485413",
++  "include_merges": "nontrivial",
++  "object_type": "git_evidence_manifest",
++  "release_version": "0.1.1",
++  "schema_version": 1
++}
+diff --git a/.ledger/releaseledger/work/0.1.1/range.json b/.ledger/releaseledger/work/0.1.1/range.json
+new file mode 100644
+index 0000000..fe4ccc2
+--- /dev/null
++++ b/.ledger/releaseledger/work/0.1.1/range.json
+@@ -0,0 +1,13 @@
++{
++  "base_ref": "86984b3c2bbc58ed1ed4bec5c7c267a4478f0284",
++  "base_sha": "86984b3c2bbc58ed1ed4bec5c7c267a4478f0284",
++  "candidate_count": 2,
++  "commit_count": 2,
++  "head_ref": "1465be4ad1e989b04acdcee0ad5f1a9196485413",
++  "head_sha": "1465be4ad1e989b04acdcee0ad5f1a9196485413",
++  "include_merges": "nontrivial",
++  "kind": "git_range_summary",
++  "merge_commit_count": 0,
++  "merge_commits_skipped": 0,
++  "range": "86984b3c2bbc58ed1ed4bec5c7c267a4478f0284..1465be4ad1e989b04acdcee0ad5f1a9196485413"
++}
+diff --git a/docs/changelog.md b/docs/changelog.md
+index bbe429f..507fa17 100644
+--- a/docs/changelog.md
++++ b/docs/changelog.md
+@@ -1,6 +1,18 @@
+ # Changelog
+
+-## [0.1.0] - Unreleased
++## [0.1.1] - 2026-10-03
++
++### Added
++
++- Added per-artifact control for spelling or preserving residual sequences
++
++### Changed
++
++- Improved CLI help readability on narrow terminals
++
++<!-- generated by releaseledger -->
++
++## [0.1.0] - 2026-10-02
+
+ ### Added

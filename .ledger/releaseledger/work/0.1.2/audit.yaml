@@ -1,0 +1,295 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 1
+release_version: 0.1.2
+git_base_ref: v0.1.1
+git_base_sha: 7aca32d97e17101c7eb78dfce5d2a3e3e0e00a18
+git_head_ref: HEAD
+git_head_sha: 22f69d91ef04eb14196f61821dcc4accf7dca661
+git_range: 7aca32d97e17101c7eb78dfce5d2a3e3e0e00a18..22f69d91ef04eb14196f61821dcc4accf7dca661
+commit_count: 11
+rows:
+  - sha: 13c3fb90eab3d2ddfe820e3319da28bceb99012e
+    source_ref: git:13c3fb90eab3d2ddfe820e3319da28bceb99012e
+    short_sha: 13c3fb9
+    changed_paths:
+      - README.md
+      - pyproject.toml
+      - tests/test_analysis_cache.py
+      - tests/test_cli.py
+      - tests/test_context.py
+      - tests/test_lexical_review.py
+      - tests/test_materialization.py
+      - tests/test_readers.py
+      - tests/test_reproducibility.py
+      - tests/test_selection.py
+      - tests/test_sidecar.py
+      - tests/test_speakers.py
+      - tests/test_speakers_cli.py
+      - tests/test_ssmd_input.py
+      - tests/test_tts_plan.py
+      - ttsready/__init__.py
+      - ttsready/analysis.py
+      - ttsready/cli.py
+      - ttsready/context.py
+      - ttsready/errors.py
+      - ttsready/freeze.py
+      - ttsready/input.py
+      - ttsready/lexical_review.py
+      - ttsready/materialization.py
+      - ttsready/models.py
+      - ttsready/pipeline.py
+      - ttsready/planning.py
+      - ttsready/readers.py
+      - ttsready/reporting.py
+      - ttsready/reproducibility.py
+      - ttsready/sidecar.py
+      - ttsready/writers.py
+    stats:
+      files_changed: 32
+      insertions: 3722
+      deletions: 808
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "feat: use ssmdconvert as basis"
+  - sha: e2025ecda261a52ec9cdb397716a990dbea74c80
+    source_ref: git:e2025ecda261a52ec9cdb397716a990dbea74c80
+    short_sha: e2025ec
+    changed_paths:
+      - .codecrate.toml
+      - .github/workflows/python-publish.yml
+      - .github/workflows/tests.yml
+      - .ledger/releaseledger/data/ledgers/main/events/events.jsonl
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0001.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0002.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0003.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0004.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0005.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0006.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0007.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0008.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0009.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/release.md
+      - .ledger/releaseledger/write.lock
+      - README.md
+      - RELEASING.md
+      - docs/changelog.md
+      - docs/cli.md
+      - docs/index.md
+      - docs/installation.md
+      - docs/make.py
+      - docs/ownership-boundary.md
+      - docs/python-api.md
+      - docs/quickstart.md
+      - docs/reproducibility.md
+      - docs/review-workflow.md
+      - docs/speakers.md
+      - examples/basic.ssmd.md
+      - examples/basic_preview.py
+      - pyproject.toml
+      - tests/test_readme_examples.py
+    stats:
+      files_changed: 32
+      insertions: 711
+      deletions: 73
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "feat: prepare release"
+  - sha: 86984b3c2bbc58ed1ed4bec5c7c267a4478f0284
+    source_ref: git:86984b3c2bbc58ed1ed4bec5c7c267a4478f0284
+    short_sha: 86984b3
+    changed_paths:
+      - tests/test_ssmd_input.py
+      - ttsready/input.py
+    stats:
+      files_changed: 2
+      insertions: 17
+      deletions: 1
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "fix: pytest"
+  - sha: cfaf3ede40e1f0dcd51c5858fd7210e1d3e52c4b
+    source_ref: git:cfaf3ede40e1f0dcd51c5858fd7210e1d3e52c4b
+    short_sha: cfaf3ed
+    changed_paths:
+      - tests/test_analysis_cache.py
+      - tests/test_cli.py
+      - tests/test_pipeline.py
+      - tests/test_reporting.py
+      - tests/test_reproducibility.py
+      - ttsready/cli.py
+      - ttsready/cli_help.py
+      - ttsready/models.py
+    stats:
+      files_changed: 8
+      insertions: 228
+      deletions: 2
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "feat: change fallback mode"
+  - sha: 1465be4ad1e989b04acdcee0ad5f1a9196485413
+    source_ref: git:1465be4ad1e989b04acdcee0ad5f1a9196485413
+    short_sha: 1465be4
+    changed_paths:
+      - pyproject.toml
+      - tests/test_analysis_cache.py
+      - tests/test_pipeline.py
+      - tests/test_reporting.py
+      - tests/test_reproducibility.py
+      - tests/test_ssmd_input.py
+      - ttsready/analysis.py
+      - ttsready/input.py
+      - ttsready/models.py
+      - ttsready/pipeline.py
+      - ttsready/reproducibility.py
+    stats:
+      files_changed: 11
+      insertions: 448
+      deletions: 21
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "feat: use sequence fallback setting from ssmdconvert"
+  - sha: 730a89b3f471d4d486560f0811428d693279641e
+    source_ref: git:730a89b3f471d4d486560f0811428d693279641e
+    short_sha: 730a89b
+    changed_paths:
+      - .ledger/releaseledger/data/ledgers/main/events/events.jsonl
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/release.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.1/audit/commit-audit.yaml
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.1/entries/entry-0001.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.1/entries/entry-0002.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.1/release.md
+      - .ledger/releaseledger/work/0.1.1/audit-decisions.yaml
+      - .ledger/releaseledger/work/0.1.1/audit.yaml
+      - .ledger/releaseledger/work/0.1.1/entries.yaml
+      - .ledger/releaseledger/work/0.1.1/evidence/1465be4.patch
+      - .ledger/releaseledger/work/0.1.1/evidence/cfaf3ed.patch
+      - .ledger/releaseledger/work/0.1.1/evidence/manifest.json
+      - .ledger/releaseledger/work/0.1.1/range.json
+      - docs/changelog.md
+    stats:
+      files_changed: 14
+      insertions: 1584
+      deletions: 5
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "doc: changelog"
+  - sha: 8d66b004adf648124e268062b2e35d9fd23d8ee5
+    source_ref: git:8d66b004adf648124e268062b2e35d9fd23d8ee5
+    short_sha: 8d66b00
+    changed_paths:
+      - tests/test_analysis_cache.py
+      - tests/test_reporting.py
+    stats:
+      files_changed: 2
+      insertions: 1
+      deletions: 25
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "chore: fix pre-commit"
+  - sha: cef4aaaf625dba515a5758dba93c8d4ec84797d1
+    source_ref: git:cef4aaaf625dba515a5758dba93c8d4ec84797d1
+    short_sha: cef4aaa
+    changed_paths:
+      - tests/test_analysis_cache.py
+      - tests/test_pipeline.py
+      - tests/test_reproducibility.py
+    stats:
+      files_changed: 3
+      insertions: 22
+      deletions: 10
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "fix: pytest"
+  - sha: 2b5fd83f4b49ef9d89fa17f1b72df83ac0917d39
+    source_ref: git:2b5fd83f4b49ef9d89fa17f1b72df83ac0917d39
+    short_sha: 2b5fd83
+    changed_paths:
+      - pyproject.toml
+      - ttsready/cli.py
+      - ttsready/freeze.py
+      - ttsready/input.py
+      - ttsready/materialization.py
+      - ttsready/models.py
+      - ttsready/overrides.py
+      - ttsready/pipeline.py
+      - ttsready/reporting.py
+    stats:
+      files_changed: 9
+      insertions: 437
+      deletions: 71
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "feat: use utterplan and ssmdbook workspace"
+  - sha: 50f9ad3321d04273e1786588fd01b51060e5669a
+    source_ref: git:50f9ad3321d04273e1786588fd01b51060e5669a
+    short_sha: 50f9ad3
+    changed_paths:
+      - ttsready/input.py
+      - ttsready/materialization.py
+      - ttsready/pipeline.py
+    stats:
+      files_changed: 3
+      insertions: 53
+      deletions: 34
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "chore: pre-commit"
+  - sha: 22f69d91ef04eb14196f61821dcc4accf7dca661
+    source_ref: git:22f69d91ef04eb14196f61821dcc4accf7dca661
+    short_sha: 22f69d9
+    changed_paths:
+      - tests/test_ssmd_input.py
+    stats:
+      files_changed: 1
+      insertions: 2
+      deletions: 2
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "fix: pytest"

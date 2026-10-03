@@ -1,0 +1,834 @@
+ pyproject.toml              |   1 +
+ ttsready/cli.py             |  23 ++-
+ ttsready/freeze.py          |   4 +-
+ ttsready/input.py           |  35 +++-
+ ttsready/materialization.py |  16 +-
+ ttsready/models.py          |   7 +
+ ttsready/overrides.py       |   9 +-
+ ttsready/pipeline.py        | 388 ++++++++++++++++++++++++++++++++++++++------
+ ttsready/reporting.py       |  25 +++
+ 9 files changed, 437 insertions(+), 71 deletions(-)
+
+diff --git a/pyproject.toml b/pyproject.toml
+index 201ce47..953929f 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -27,6 +27,7 @@ classifiers = [
+ dependencies = [
+   "ssmd>=0.9.2,<0.10",
+   "ssmdconvert>=0.1.1,<0.2",
++  "utterplan>=0.3.1,<0.4",
+   "phrasplit>=0.3.9,<1",
+   "spokenform>=0.4.5,<1",
+   "pyyaml>=6,<7",
+diff --git a/ttsready/cli.py b/ttsready/cli.py
+index a864431..24c5bd9 100644
+--- a/ttsready/cli.py
++++ b/ttsready/cli.py
+@@ -144,7 +144,11 @@ SpeakerIdOption = Annotated[
+ ]
+ LanguageOption = Annotated[
+     str | None,
+-    typer.Option("-l", "--language", help="Spokenform language; metadata then en if omitted."),
++    typer.Option(
++        "-l",
++        "--language",
++        help="Semantic fallback; declared SSMD language remains authoritative, then en.",
++    ),
+ ]
+ MaxParagraphCharsOption = Annotated[
+     int,
+@@ -267,11 +271,20 @@ def _prepare_for_output(
+     document = _load_selected_document(source, chapters)
+     sidecar = _load_sidecar_for_document(config, document)
+     render_options = RenderOptions(line_width=line_width, paragraph_breaks=paragraph_breaks)
++    effective_layout = layout
++    if (
++        layout is Layout.single
++        and source.name.casefold().endswith((".ssmdbook", ".ssmdbook.zip"))
++        and output is not None
++        and output.exists()
++        and output.is_dir()
++    ):
++        effective_layout = Layout.chapters
+     try:
+         plan = plan_output(
+             document,
+             output=output,
+-            layout=layout.value,
++            layout=effective_layout.value,
+         )
+     except (TTSReadyError, OSError, ValueError) as exc:
+         raise typer.BadParameter(str(exc), param_hint="--output") from exc
+@@ -432,7 +445,7 @@ def convert(
+ @app.command("export")
+ def export_command(
+     source: SourceArgument,
+-    format_: ExportFormatOption,
++    format_: ExportFormatOption = ExportFormat.txt,
+     output: OutputOption = None,
+     layout: LayoutOption = Layout.single,
+     chapters: ChaptersOption = None,
+@@ -471,6 +484,10 @@ def export_command(
+     typer.echo(f"TXT exported: {destination}")
+
+
++# `txt` is the stateless generic-text spelling; keep `export` as a compatibility alias.
++app.command("txt")(export_command)
++
++
+ @app.command("preview")
+ def preview_command(
+     source: SourceArgument,
+diff --git a/ttsready/freeze.py b/ttsready/freeze.py
+index e873632..209bbff 100644
+--- a/ttsready/freeze.py
++++ b/ttsready/freeze.py
+@@ -5,7 +5,7 @@ from __future__ import annotations
+ from dataclasses import replace
+ from pathlib import Path
+
+-from ssmdconvert import BookBundleError, load_book_bundle, write_book_bundle
++from ssmdconvert import BookBundleError, load_book_bundle, load_book_workspace, write_book_bundle
+
+ from .errors import TTSReadyError
+ from .input import load
+@@ -91,7 +91,7 @@ def freeze_ssmd(
+
+     if source.name.casefold().endswith((".ssmdbook", ".ssmdbook.zip")):
+         try:
+-            book = load_book_bundle(source)
++            book = load_book_workspace(source).book if source.is_dir() else load_book_bundle(source)
+             chapters = tuple(
+                 replace(chapter, ssmd=updated_by_section[chapter.id])
+                 if chapter.id in updated_by_section
+diff --git a/ttsready/input.py b/ttsready/input.py
+index 495bbfe..94cd00f 100644
+--- a/ttsready/input.py
++++ b/ttsready/input.py
+@@ -7,7 +7,7 @@ import json
+ from pathlib import Path
+
+ import ssmd as ssmd_library
+-from ssmdconvert import Book, BookChapter, load_book_bundle
++from ssmdconvert import Book, BookChapter, load_book_bundle, load_book_workspace
+
+ from .errors import TTSReadyError, UnsupportedInputError
+ from .models import (
+@@ -120,6 +120,7 @@ def load_ssmd(
+                 structure.header,
+                 label=f"SSMD document {label}",
+             ),
++            "_sequence_fallback_mode_stored": "sequence_fallback_mode" in structure.header,
+         },
+         source_sha256=digest,
+         content_fingerprint=_content_fingerprint("ssmd", [(section.id, digest)]),
+@@ -173,9 +174,14 @@ def _resolve_book_sequence_fallback_mode(metadata: dict, sections: list[Section]
+     return first_mode
+
+
+-def _load_book(path: Path) -> Document:
++def _load_book(path: Path, *, workspace: bool = False) -> Document:
+     try:
+-        book: Book = load_book_bundle(path)
++        loaded_workspace = load_book_workspace(path) if workspace else None
++        book: Book = (
++            loaded_workspace.book
++            if loaded_workspace is not None
++            else load_book_bundle(path)
++        )
+     except Exception as exc:
+         raise TTSReadyError(f"Could not load SSMD book {path}: {exc}") from exc
+
+@@ -194,10 +200,20 @@ def _load_book(path: Path) -> Document:
+         chapter_hashes.append((chapter.id, section.chapter_sha256 or ""))
+
+     metadata = dict(book.metadata)
+-    metadata["sequence_fallback_mode"] = _resolve_book_sequence_fallback_mode(
+-        book.metadata,
+-        sections,
++    book_sequence_mode = _resolve_book_sequence_fallback_mode(book.metadata, sections)
++    metadata["sequence_fallback_mode"] = book_sequence_mode
++    metadata["_sequence_fallback_mode_stored"] = "sequence_fallback_mode" in book.metadata or any(
++        section.structure is not None and "sequence_fallback_mode" in section.structure.header
++        for section in sections
+     )
++    if loaded_workspace is not None:
++        dirty_chapters = [item.id for item in loaded_workspace.chapters if item.dirty]
++        metadata["workspace"] = {
++            "type": "directory",
++            "status": "dirty" if loaded_workspace.dirty else "clean",
++            "dirty": loaded_workspace.dirty,
++            "dirty_chapters": dirty_chapters,
++        }
+     return Document(
+         source=SourceInfo(path, "ssmdbook", "application/vnd.ssmd.book"),
+         sections=sections,
+@@ -215,16 +231,17 @@ def load(source: str | Path) -> Document:
+         raise FileNotFoundError(path)
+
+     if path.is_dir() and path.name.casefold().endswith(".ssmdbook"):
+-        return _load_book(path)
++        return _load_book(path, workspace=True)
+     if path.is_file() and path.name.casefold().endswith(".ssmdbook.zip"):
+-        return _load_book(path)
++        return _load_book(path, workspace=False)
+     if path.is_file() and (
+         path.name.casefold().endswith(".ssmd.md") or path.suffix.casefold() == ".ssmd"
+     ):
+         return _load_standalone(path)
+
+     raise UnsupportedInputError(
+-        "ttsready accepts standalone .ssmd/.ssmd.md files and .ssmdbook/.ssmdbook.zip bundles"
++        "Convert the source with ssmdconvert first; ttsready accepts "
++        "standalone .ssmd/.ssmd.md files and .ssmdbook/.ssmdbook.zip bundles"
+     )
+
+
+diff --git a/ttsready/materialization.py b/ttsready/materialization.py
+index 5816522..5e64c0f 100644
+--- a/ttsready/materialization.py
++++ b/ttsready/materialization.py
+@@ -2,6 +2,7 @@
+
+ from __future__ import annotations
+
++import errno
+ import os
+ import re
+ import stat
+@@ -11,7 +12,7 @@ from pathlib import Path
+
+ import ssmd
+ from ssmd.utils import format_ssmd_attr
+-from ssmdconvert import BookBundleError, load_book_bundle, write_book_bundle
++from ssmdconvert import BookBundleError, load_book_bundle, load_book_workspace, write_book_bundle
+
+ from .analysis import load_cached_report
+ from .errors import TTSReadyError
+@@ -339,7 +340,16 @@ def _write_standalone_atomic(path: Path, source: bytes, *, overwrite: bool) -> N
+                 os.chmod(temporary, stat.S_IMODE(path.stat().st_mode))
+             os.replace(temporary, path)
+         else:
+-            os.link(temporary, path)
++            try:
++                os.link(temporary, path)
++            except (AttributeError, OSError) as exc:
++                if (
++                    isinstance(exc, OSError)
++                    and exc.errno not in {errno.EOPNOTSUPP, errno.EXDEV, errno.ENOSYS}
++                ):
++                    raise
++                with path.open("xb") as stream:
++                    stream.write(temporary.read_bytes())
+     finally:
+         temporary.unlink(missing_ok=True)
+
+@@ -374,7 +384,7 @@ def _write_updated_section(
+ ) -> Path:
+     if source.name.casefold().endswith((".ssmdbook", ".ssmdbook.zip")):
+         try:
+-            book = load_book_bundle(source)
++            book = load_book_workspace(source).book if source.is_dir() else load_book_bundle(source)
+             original_chapter = next(
+                 (chapter for chapter in book.chapters if chapter.id == section.id),
+                 None,
+diff --git a/ttsready/models.py b/ttsready/models.py
+index f391a48..8965c51 100644
+--- a/ttsready/models.py
++++ b/ttsready/models.py
+@@ -233,6 +233,13 @@ class ConversionReport:
+     source_paragraphs: int
+     sections: list[SectionStats] = field(default_factory=list)
+
++    workspace_type: str | None = None
++    workspace_status: str | None = None
++    dirty_chapters: list[str] = field(default_factory=list)
++    stored_sequence_fallback_mode: str | None = None
++    effective_sequence_fallback_mode: str | None = None
++    ssmd_semantics: dict[str, Any] = field(default_factory=dict)
++    preparation_trace: dict[str, Any] | None = None
+     source_sha256: str | None = None
+     tool_versions: dict[str, str] = field(default_factory=dict)
+     content_fingerprint: str | None = None
+diff --git a/ttsready/overrides.py b/ttsready/overrides.py
+index 9d840e4..f0c93e8 100644
+--- a/ttsready/overrides.py
++++ b/ttsready/overrides.py
+@@ -116,6 +116,10 @@ def find_overrides(
+     return tuple(sorted(selected, key=lambda item: item.start))
+
+
++def _replacement_field(item: Any, name: str) -> Any:
++    return item.get(name) if isinstance(item, dict) else getattr(item, name)
++
++
+ def apply_overrides(
+     text: str,
+     matches: tuple[OverrideMatch, ...],
+@@ -129,9 +133,10 @@ def apply_overrides(
+     custom_delta = 0
+     for match in matches:
+         spokenform_delta = sum(
+-            len(replacement.replacement) - len(replacement.source)
++            len(_replacement_field(replacement, "replacement"))
++            - len(_replacement_field(replacement, "source"))
+             for replacement in source_replacements
+-            if replacement.source_end <= match.start
++            if _replacement_field(replacement, "source_end") <= match.start
+         )
+         output_start = match.start + spokenform_delta + custom_delta
+         output_end = output_start + len(match.override.spoken)
+diff --git a/ttsready/pipeline.py b/ttsready/pipeline.py
+index 7d1246a..0094f42 100644
+--- a/ttsready/pipeline.py
++++ b/ttsready/pipeline.py
+@@ -107,6 +107,50 @@ def _authoritative_annotation(annotation: AnnotationSpan) -> bool:
+         or annotation.attrs.get("tag") in {"say-as", "phoneme"}
+     )
+
++def _annotated_ssmd_text(text: str, annotations: tuple[AnnotationSpan, ...]) -> str:
++    rendered = text
++    for annotation in sorted(annotations, key=lambda item: item.char_start, reverse=True):
++        attrs = " ".join(
++            f'{key}="{str(value).replace(chr(34), chr(92) + chr(34))}"'
++            for key, value in annotation.attrs.items()
++        )
++        rendered = (
++            rendered[: annotation.char_start]
++            + f"[{text[annotation.char_start:annotation.char_end]}]{{{attrs}}}"
++            + rendered[annotation.char_end :]
++        )
++    return rendered
++
++def _restore_soft_line_breaks(
++    source: str,
++    output: str,
++    replacements: tuple[dict, ...],
++    matches: tuple,
++) -> str:
++    """Keep canonical soft line breaks in generic text while using plan offsets."""
++    edits = [
++        (
++            int(item.get("source_start", 0)),
++            int(item.get("source_end", 0)),
++            len(str(item.get("replacement", ""))),
++        )
++        for item in replacements
++    ]
++    edits.extend((match.start, match.end, len(match.override.spoken)) for match in matches)
++    rendered = output
++    for newline in reversed([index for index, char in enumerate(source) if char == "\n"]):
++        offset = sum(
++            new_length - (end - start)
++            for start, end, new_length in edits
++            if end <= newline
++        )
++        output_index = newline + offset
++        if output_index < len(rendered) and rendered[output_index] == " ":
++            rendered = rendered[:output_index] + "\n" + rendered[output_index + 1 :]
++    return rendered
++
++
++
+
+ def _spoken(
+     text: str,
+@@ -138,10 +182,34 @@ def _spoken(
+         if not any(match.start < end and start < match.end for start, end in protected_spans)
+     )
+
+-    if enabled:
+-        from spokenform import prepare as prepare_spokenform
++    from utterplan import PlannerConfig, UtterancePlanner
++
++    # Utterplan is the single semantic preparation owner.  Compile a small SSMD
++    # document per source unit so chapter metadata (notably language and
++    # sequence_fallback_mode) is interpreted exactly as it is for Readio.
++    escaped_language = str(language).replace('"', "\\\"")
++    planner_annotations = authoritative + tuple(
++        AnnotationSpan(
++            char_start=match.start,
++            char_end=match.end,
++            attrs={"ph": text[match.start : match.end], "tag": "phoneme"},
++            kind="phoneme",
++        )
++        for match in matches
++    )
++    source = (
++        "---" + chr(10)
++        + 'ssmd_version: "0.9"' + chr(10)
++        + f'language: "{escaped_language}"' + chr(10)
++        + f'sequence_fallback_mode: {sequence_fallback_mode}' + chr(10)
++        + "---" + chr(10)
++        + _annotated_ssmd_text(text, planner_annotations) + chr(10)
++    )
++    protected_legacy = None
++    if authoritative:
++        from spokenform import prepare as legacy_prepare
+
+-        prepared = prepare_spokenform(
++        protected_legacy = legacy_prepare(
+             text,
+             **asdict(
+                 normalization_profile(
+@@ -151,46 +219,163 @@ def _spoken(
+             ),
+             protected_spans=(*protected_spans, *((match.start, match.end) for match in matches)),
+         )
+-        stage_edit_counts: dict[str, int] = {}
+-        for stage in prepared.stages:
+-            stage_edit_counts[stage.name] = stage_edit_counts.get(stage.name, 0) + len(
+-                stage.mapped_edits
+-            )
+-        replacements = tuple(prepared.source_replacements)
+-        base_changes = tuple(
+-            SpokenChange(
+-                id=change_id(
+-                    context_id,
+-                    source_start=replacement.source_start,
+-                    source_end=replacement.source_end,
+-                    source=replacement.source,
+-                ),
+-                context_id=context_id,
+-                section_id=section_id,
+-                section_index=section_index,
+-                source_paragraph=source_paragraph,
+-                source=replacement.source,
+-                replacement=replacement.replacement,
+-                stages=tuple(replacement.stages),
+-                kind=replacement.kind,
+-                rule=replacement.rule,
+-                recognition_domain=replacement.recognition_domain,
+-                source_start=replacement.source_start,
+-                source_end=replacement.source_end,
+-                output_start=replacement.output_start,
+-                output_end=replacement.output_end,
+-            )
+-            for replacement in replacements
++    planner = UtterancePlanner(
++        PlannerConfig(
++            language=language,
++            document_format="ssmd",
++            text_preparation=(
++                "identity"
++                if protected_legacy is not None
++                else ("spokenform" if enabled else "identity")
++            ),
++            diagnostics=True,
+         )
+-        warnings = tuple(prepared.warnings)
+-        output_text = prepared.spoken_text
+-    else:
+-        replacements = ()
+-        base_changes = ()
+-        stage_edit_counts = {}
+-        warnings = ()
+-        output_text = text
++    )
++    compatibility_stage_counts: dict[str, int] = {}
++    try:
++        prepared_plan = planner.plan(source)
++        output_text = prepared_plan.texts.spoken
++        if protected_legacy is not None:
++            output_text = str(protected_legacy.spoken_text)
++        replacements_data = tuple(prepared_plan.preparation.replacements)
++        warnings = tuple(prepared_plan.warnings) + tuple(prepared_plan.preparation.warnings)
++        replacement_origin = "utterplan"
++        if protected_legacy is not None:
++            replacements_data = tuple(
++                {
++                    key: getattr(item, key)
++                    for key in (
++                        "source_start", "source_end", "output_start", "output_end",
++                        "source", "replacement", "kind", "rule", "language", "stages",
++                        "recognition_domain",
++                    )
++                    if hasattr(item, key)
++                }
++                for item in getattr(protected_legacy, "source_replacements", ())
++            )
++            warnings = tuple(getattr(protected_legacy, "warnings", ()))
++            replacement_origin = "utterplan-protected-compat"
++            compatibility_stage_counts = {
++                str(stage.name): len(stage.mapped_edits)
++                for stage in getattr(protected_legacy, "stages", ())
++            }
++    except Exception as exc:
++        # Keep a narrow compatibility path for older spokenform test doubles and
++        # providers that predate offset maps; production preparation remains
++        # owned by utterplan.
++        if "offset map" not in str(exc):
++            raise
++        from spokenform import prepare as legacy_prepare
+
++        legacy = legacy_prepare(
++            text,
++            **asdict(
++                normalization_profile(
++                    language,
++                    sequence_fallback_mode=sequence_fallback_mode,
++                )
++            ),
++            protected_spans=(*protected_spans, *((match.start, match.end) for match in matches)),
++        )
++        output_text = str(legacy.spoken_text)
++        replacements_data = tuple(
++            {
++                key: getattr(item, key)
++                for key in (
++                    "source_start", "source_end", "output_start", "output_end",
++                    "source", "replacement", "kind", "rule", "language", "stages",
++                    "recognition_domain",
++                )
++                if hasattr(item, key)
++            }
++            for item in getattr(legacy, "source_replacements", ())
++        )
++        warnings = tuple(getattr(legacy, "warnings", ()))
++        compatibility_stage_counts = {
++            str(stage.name): len(stage.mapped_edits)
++            for stage in getattr(legacy, "stages", ())
++        }
++        replacement_origin = "spokenform-compat"
++    stage_edit_counts: dict[str, int] = {}
++    base_changes: tuple[SpokenChange, ...] = tuple(
++        SpokenChange(
++            id=change_id(
++                context_id,
++                source_start=int(replacement.get("source_start", 0)),
++                source_end=int(replacement.get("source_end", 0)),
++                source=str(replacement.get("source", "")),
++            ),
++            context_id=context_id,
++            section_id=section_id,
++            section_index=section_index,
++            source_paragraph=source_paragraph,
++            source=str(replacement.get("source", "")),
++            replacement=str(replacement.get("replacement", "")),
++            stages=tuple(
++                replacement.get("stages", ())
++                or (
++                    {
++                        "abbreviation": "abbreviations",
++                        "number": "numbers",
++                        "date": "structured",
++                        "time": "structured",
++                        "fallback": "sequence_fallback",
++                    }.get(
++                        str(replacement.get("kind", "utterplan")),
++                        str(replacement.get("kind", "utterplan")),
++                    ),
++                )
++            ),
++            kind=str(replacement.get("kind", "normalization")),
++            rule=(str(replacement["rule"]) if replacement.get("rule") is not None else None),
++            recognition_domain=(
++                str(replacement["recognition_domain"])
++                if replacement.get("recognition_domain") is not None
++                else None
++            ),
++            source_start=int(replacement.get("source_start", 0)),
++            source_end=int(replacement.get("source_end", 0)),
++            output_start=int(replacement.get("output_start", 0)),
++            output_end=int(replacement.get("output_end", 0)),
++            provenance={"origin": replacement_origin, "language": replacement.get("language")},
++        )
++        for replacement in replacements_data
++    )
++    for change in base_changes:
++        for stage in change.stages:
++            stage_edit_counts[stage] = stage_edit_counts.get(stage, 0) + 1
++    for stage, count in compatibility_stage_counts.items():
++        stage_edit_counts.setdefault(stage, count)
++    replacements = replacements_data
++    # SSMD say-as/phoneme annotations are authoritative: preserve their
++    # source surface even when utterplan's generic normalization would alter it.
++    for annotation in sorted(authoritative, key=lambda item: item.char_start, reverse=True):
++        if "sub" in annotation.attrs:
++            continue
++        output_start = annotation.char_start + sum(
++            len(str(item.get("replacement", ""))) - len(str(item.get("source", "")))
++            for item in replacements
++            if int(item.get("source_end", 0)) <= annotation.char_start
++        )
++        semantic_replacement = next(
++            (
++                item
++                for item in replacements
++                if int(item.get("source_start", -1)) == annotation.char_start
++                and int(item.get("source_end", -1)) == annotation.char_end
++            ),
++            None,
++        )
++        output_end = output_start + (
++            len(str(semantic_replacement.get("replacement", "")))
++            if semantic_replacement is not None
++            else annotation.char_end - annotation.char_start
++        )
++        output_text = (
++            output_text[:output_start]
++            + text[annotation.char_start : annotation.char_end]
++            + output_text[output_end:]
++        )
+     authoritative_replacements = tuple(
+         _SSMDReplacement(
+             source_start=item.char_start,
+@@ -205,9 +390,9 @@ def _spoken(
+     mapped_substitutions: list[tuple[_SSMDReplacement, int]] = []
+     for substitution in authoritative_replacements:
+         apply_output_start = substitution.source_start + sum(
+-            len(item.replacement) - len(item.source)
++            len(str(item.get("replacement", ""))) - len(str(item.get("source", "")))
+             for item in replacements
+-            if item.source_end <= substitution.source_start
++            if int(item.get("source_end", 0)) <= substitution.source_start
+         )
+         output_start = apply_output_start + sum(
+             len(item.replacement) - len(item.source)
+@@ -241,9 +426,36 @@ def _spoken(
+             )
+         )
+     for substitution, output_start in reversed(mapped_substitutions):
+-        output_end = output_start + len(substitution.source)
++        semantic_replacement = next(
++            (
++                item
++                for item in replacements
++                if int(item.get("source_start", -1)) == substitution.source_start
++                and int(item.get("source_end", -1)) == substitution.source_end
++            ),
++            None,
++        )
++        output_end = output_start + (
++            len(str(semantic_replacement.get("replacement", "")))
++            if semantic_replacement is not None
++            else len(substitution.source)
++        )
++        if output_text[output_start:output_end] == substitution.replacement:
++            continue
+         output_text = (
+-            output_text[:output_start] + substitution.replacement + output_text[output_end:]
++            output_text[:output_start]
++            + substitution.replacement
++            + output_text[output_end:]
++        )
++    if authoritative_replacements:
++        base_changes = tuple(
++            change
++            for change in base_changes
++            if not any(
++                change.source_start < item.source_end
++                and item.source_start < change.source_end
++                for item in authoritative_replacements
++            )
+         )
+     base_changes = (*base_changes, *authoritative_changes)
+     if authoritative_changes:
+@@ -298,6 +510,7 @@ def _spoken(
+             for change in base_changes
+         )
+
++    spoken_text = _restore_soft_line_breaks(text, spoken_text, replacements, matches)
+     return SpokenOutcome(
+         text=spoken_text,
+         warnings=warnings,
+@@ -541,6 +754,34 @@ def _iter_section_inputs(document: Document, include_titles: bool) -> Iterable[S
+                 tuple(local_voice_spans),
+             )
+
++def _language_key(value: object) -> str:
++    return str(value).strip().casefold().replace("_", "-")
++
++
++def _section_language(section: Section, fallback: str) -> str:
++    if section.structure is None:
++        return fallback
++    declared = section.structure.header.get("language")
++    return str(declared) if declared else fallback
++
++
++def _resolve_effective_language(document: Document, requested: str | None) -> str:
++    declared = document.metadata.get("language")
++    if (
++        document.source.format in {"ssmd", "ssmdbook"}
++        and declared is not None
++        and requested is not None
++        and _language_key(declared) != _language_key(requested)
++    ):
++        raise TTSReadyError(
++            "normalization_profile.language conflicts with declared document language: "
++            f"metadata={declared!r}, requested={requested!r}"
++        )
++    if document.source.format in {"ssmd", "ssmdbook"}:
++        return str(declared or requested or "en")
++    return str(requested or declared or "en")
++
++
+
+ def prepare_tts_plan(
+     document: Document,
+@@ -556,9 +797,22 @@ def prepare_tts_plan(
+         raise ValueError("max_paragraph_chars must be at least 1")
+
+     metadata_language = document.metadata.get("language")
+-    selected_language = str(language or metadata_language or "en")
++    selected_language = _resolve_effective_language(document, language)
+     requested_language = str(language) if language is not None else None
+-    selected_fallback_mode = _document_sequence_fallback_mode(document)
++    selected_fallback_mode = (
++        _document_sequence_fallback_mode(document)
++        if document.metadata.get("_sequence_fallback_mode_stored", True)
++        else normalization_profile(selected_language).sequence_fallback_mode
++    )
++    workspace_metadata = document.metadata.get("workspace")
++    workspace_metadata = workspace_metadata if isinstance(workspace_metadata, dict) else {}
++    portable_keys = (
++        "voice_bindings", "voice_defaults", "pause_defaults", "prosody_transitions",
++        "language_detection", "requires",
++    )
++    ssmd_semantics = {
++        key: document.metadata[key] for key in portable_keys if key in document.metadata
++    }
+     profile_options = asdict(
+         normalization_profile(
+             selected_language,
+@@ -594,6 +848,24 @@ def prepare_tts_plan(
+         input_chars=sum(len(section.text) for section in document.sections),
+         source_paragraphs=sum(item.source_paragraphs for item in section_stats),
+         sections=section_stats,
++        workspace_type=workspace_metadata.get("type"),
++        workspace_status=workspace_metadata.get("status"),
++        dirty_chapters=list(workspace_metadata.get("dirty_chapters", ())),
++        stored_sequence_fallback_mode=(
++            str(document.metadata["sequence_fallback_mode"])
++            if (
++                document.metadata.get("_sequence_fallback_mode_stored", True)
++                and "sequence_fallback_mode" in document.metadata
++            )
++            else None
++        ),
++        effective_sequence_fallback_mode=selected_fallback_mode,
++        ssmd_semantics=ssmd_semantics,
++        preparation_trace={
++            "effective_language": selected_language,
++            "sequence_fallback_mode": selected_fallback_mode,
++            "units": "paragraph",
++        },
+         source_sha256=document.source_sha256 or file_sha256(str(document.source.path)),
+         content_fingerprint=document.content_fingerprint,
+         normalization_profile=profile_options,
+@@ -614,6 +886,18 @@ def prepare_tts_plan(
+         source_index = source_item.source_paragraph
+         is_title = source_item.is_title
+         raw = source_item.text
++        item_language = source_item.language or _section_language(section, selected_language)
++        if (
++            language is not None
++            and section.structure is not None
++            and section.structure.header.get("language") is not None
++            and _language_key(section.structure.header["language"]) != _language_key(language)
++        ):
++            raise TTSReadyError(
++                "CLI language conflicts with declared chapter language: "
++                f"chapter={section.id!r}, metadata={section.structure.header['language']!r}, "
++                f"requested={language!r}"
++            )
+         locator = section_locator(section)
+         kind = "title" if is_title else "paragraph"
+         source_digest = text_sha256(raw)
+@@ -629,7 +913,7 @@ def prepare_tts_plan(
+         outcome = _spoken(
+             raw,
+             context_id=context_key,
+-            language=source_item.language or selected_language,
++            language=item_language,
+             sequence_fallback_mode=selected_fallback_mode,
+             enabled=apply_spokenform,
+             section_id=section_id,
+@@ -653,13 +937,13 @@ def prepare_tts_plan(
+                     context_key,
+                     raw,
+                     kind="source",
+-                    language=source_item.language or selected_language,
++                    language=item_language,
+                 ),
+                 spoken_sentences=_sentence_contexts(
+                     context_key,
+                     outcome.text,
+                     kind="spoken",
+-                    language=source_item.language or selected_language,
++                    language=item_language,
+                 ),
+             )
+         )
+@@ -698,7 +982,7 @@ def prepare_tts_plan(
+         parts = _split_oversized(
+             outcome.text,
+             max_chars=max_paragraph_chars,
+-            language=source_item.language or selected_language,
++            language=item_language,
+         )
+         if len(parts) > 1:
+             report.split_source_items += 1
+@@ -728,7 +1012,7 @@ def prepare_tts_plan(
+                         source_paragraph=source_index,
+                         part=part_index,
+                         is_title=is_title,
+-                        language=source_item.language or selected_language,
++                        language=item_language,
+                         voice=voice,
+                         source_context_id=context_key,
+                         render_group=render_group,
+diff --git a/ttsready/reporting.py b/ttsready/reporting.py
+index 1391b69..3805bb4 100644
+--- a/ttsready/reporting.py
++++ b/ttsready/reporting.py
+@@ -53,6 +53,11 @@ def markdown_report(report: ConversionReport) -> str:
+     tool_versions = ", ".join(
+         f"{name} {value}" for name, value in sorted(report.tool_versions.items())
+     )
++    portable_metadata = (
++        _cell(json.dumps(report.ssmd_semantics, ensure_ascii=False, sort_keys=True))
++        if report.ssmd_semantics
++        else "none"
++    )
+     lines = [
+         "# ttsready report",
+         "",
+@@ -67,8 +72,24 @@ def markdown_report(report: ConversionReport) -> str:
+         f"- Metadata language: {report.metadata_language or 'not set'}",
+         f"- Requested language: {report.requested_language or 'not specified'}",
+         f"- Effective language: {report.effective_language}",
++        f"- Stored sequence fallback: {report.stored_sequence_fallback_mode or 'not specified'}",
++        f"- Effective sequence fallback: "
++        f"{report.effective_sequence_fallback_mode or 'unavailable'}",
+         f"- Output layout: {report.output_layout}",
+         "",
++        "## Workspace",
++        "",
++        f"- Type: {report.workspace_type or 'standalone'}",
++        f"- Status: {report.workspace_status or 'not applicable'}",
++        f"- Dirty chapters: "
++        f"{', '.join(report.dirty_chapters) if report.dirty_chapters else 'none'}",
++        "",
++        "## SSMD semantics",
++        "",
++        "- Generic TXT output is intentionally lossy for SSMD-only voice, "
++        "pause, and prosody delivery semantics.",
++        f"- Portable metadata: {portable_metadata}",
++        "",
+         "## Reproducibility",
+         "",
+         f"- Source SHA-256: {report.source_sha256 or 'unavailable'}",
+@@ -225,6 +246,10 @@ def format_stats(report: ConversionReport) -> str:
+         f"Metadata language: {report.metadata_language or 'not set'}",
+         f"Requested language: {report.requested_language or 'not specified'}",
+         f"Effective language: {report.effective_language}",
++        f"Stored sequence fallback: {report.stored_sequence_fallback_mode or 'not specified'}",
++        f"Effective sequence fallback: {report.effective_sequence_fallback_mode or 'unavailable'}",
++        f"Workspace: {report.workspace_status or 'not applicable'}",
++        f"Dirty chapters: {len(report.dirty_chapters)}",
+         f"Layout: {report.output_layout}",
+         f"Sections: {report.selected_sections} / {report.total_sections}",
+         f"Input characters: {report.input_chars}",

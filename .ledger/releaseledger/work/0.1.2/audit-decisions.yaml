@@ -1,0 +1,149 @@
+rows:
+  - sha: 13c3fb90eab3d2ddfe820e3319da28bceb99012e
+    inspected: true
+    inspected_paths:
+      - ttsready/input.py
+      - ttsready/analysis.py
+      - ttsready/materialization.py
+      - ttsready/reproducibility.py
+      - ttsready/pipeline.py
+    observed_behavior: Added canonical SSMD and SSMD book loading, cached analysis, review/materialization support, and reproducible preparation primitives.
+    public_impact: public
+    decision: accepted
+    target_entry_key: null
+    target_entry_id: null
+    notes: Reviewed implementation and accompanying tests; this is the main public pipeline expansion.
+    stale: false
+  - sha: e2025ecda261a52ec9cdb397716a990dbea74c80
+    inspected: true
+    inspected_paths:
+      - README.md
+      - RELEASING.md
+      - docs/index.md
+      - docs/cli.md
+      - .github/workflows/python-publish.yml
+      - .github/workflows/tests.yml
+    observed_behavior: Added user documentation and release/CI workflow coverage for installation, CLI, API, review, reproducibility, and publishing.
+    public_impact: docs
+    decision: accepted
+    target_entry_key: null
+    target_entry_id: null
+    notes: Releaseledger files in this commit are provenance and storage updates, not public release prose.
+    stale: false
+  - sha: 86984b3c2bbc58ed1ed4bec5c7c267a4478f0284
+    inspected: true
+    inspected_paths:
+      - ttsready/input.py
+      - tests/test_ssmd_input.py
+    observed_behavior: Normalized CRLF and CR line endings before SSMD parsing so paragraph structure and prepared output remain stable across input platforms.
+    public_impact: public
+    decision: accepted
+    target_entry_key: null
+    target_entry_id: null
+    notes: Behavior is covered by the added input test.
+    stale: false
+  - sha: cfaf3ede40e1f0dcd51c5858fd7210e1d3e52c4b
+    inspected: true
+    inspected_paths:
+      - ttsready/models.py
+      - ttsready/cli.py
+      - ttsready/cli_help.py
+      - ttsready/pipeline.py
+      - ttsready/reporting.py
+    observed_behavior: Preserved residual lexical sequences instead of spelling them as fallback text, kept structured sequence rules active, and added adaptive narrow-terminal CLI help formatting.
+    public_impact: public
+    decision: accepted
+    target_entry_key: null
+    target_entry_id: null
+    notes: Reviewed implementation and tests for normalization, reporting, and terminal widths.
+    stale: false
+  - sha: 1465be4ad1e989b04acdcee0ad5f1a9196485413
+    inspected: true
+    inspected_paths:
+      - ttsready/input.py
+      - ttsready/pipeline.py
+      - ttsready/analysis.py
+      - ttsready/reproducibility.py
+      - ttsready/models.py
+    observed_behavior: Applied artifact-level sequence fallback metadata to preparation and cached analysis, validated book-level conflicts, and persisted the mode in reproducibility locks.
+    public_impact: public
+    decision: accepted
+    target_entry_key: null
+    target_entry_id: null
+    notes: Reviewed implementation and tests for standalone SSMD, books, caches, and locks.
+    stale: false
+  - sha: 730a89b3f471d4d486560f0811428d693279641e
+    inspected: true
+    inspected_paths:
+      - docs/changelog.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.1/release.md
+    observed_behavior: Updated generated release documentation and releaseledger audit/storage records; no new product behavior was introduced.
+    public_impact: internal
+    decision: internal
+    target_entry_key: null
+    target_entry_id: null
+    notes: Exclude release bookkeeping and generated historical changelog maintenance from public notes.
+    stale: false
+  - sha: 8d66b004adf648124e268062b2e35d9fd23d8ee5
+    inspected: true
+    inspected_paths:
+      - tests/test_analysis_cache.py
+      - tests/test_reporting.py
+    observed_behavior: Adjusted test fixtures and removed obsolete test coverage without changing runtime behavior.
+    public_impact: internal
+    decision: internal
+    target_entry_key: null
+    target_entry_id: null
+    notes: Test maintenance only.
+    stale: false
+  - sha: cef4aaaf625dba515a5758dba93c8d4ec84797d1
+    inspected: true
+    inspected_paths:
+      - tests/test_analysis_cache.py
+      - tests/test_pipeline.py
+      - tests/test_reproducibility.py
+    observed_behavior: Refined tests for sequence-policy cache invalidation, short paragraphs, residual sequences, and deterministic locks without changing runtime behavior.
+    public_impact: internal
+    decision: internal
+    target_entry_key: null
+    target_entry_id: null
+    notes: Test maintenance only.
+    stale: false
+  - sha: 2b5fd83f4b49ef9d89fa17f1b72df83ac0917d39
+    inspected: true
+    inspected_paths:
+      - ttsready/input.py
+      - ttsready/pipeline.py
+      - ttsready/cli.py
+      - ttsready/reporting.py
+    observed_behavior: Added SSMD book workspace loading with dirty-state metadata, chapter-aware output handling, utterplan-backed semantic preparation, and a txt export alias.
+    public_impact: public
+    decision: accepted
+    target_entry_key: null
+    target_entry_id: null
+    notes: Reviewed implementation and tests for workspace, planning, output, and CLI behavior.
+    stale: false
+  - sha: 50f9ad3321d04273e1786588fd01b51060e5669a
+    inspected: true
+    inspected_paths:
+      - ttsready/input.py
+      - ttsready/materialization.py
+      - ttsready/pipeline.py
+    observed_behavior: Applied formatting and compatibility-only cleanup to the workspace, materialization, and preparation implementation.
+    public_impact: internal
+    decision: internal
+    target_entry_key: null
+    target_entry_id: null
+    notes: No independently user-visible behavior beyond the already covered workspace implementation.
+    stale: false
+  - sha: 22f69d91ef04eb14196f61821dcc4accf7dca661
+    inspected: true
+    inspected_paths:
+      - tests/test_ssmd_input.py
+    observed_behavior: Updated the canonical-input test expectation for the preserve fallback mode without changing runtime code.
+    public_impact: internal
+    decision: internal
+    target_entry_key: null
+    target_entry_id: null
+    notes: Test expectation maintenance only.
+    stale: false

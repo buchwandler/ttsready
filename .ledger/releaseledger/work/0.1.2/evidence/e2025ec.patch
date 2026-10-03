@@ -1,0 +1,1102 @@
+ .codecrate.toml                                    |  1 -
+ .github/workflows/python-publish.yml               | 79 +++++++++++++++---
+ .github/workflows/tests.yml                        | 18 +++-
+ .../data/ledgers/main/events/events.jsonl          | 18 ++++
+ .../main/releases/0.1.0/entries/entry-0001.md      | 28 +++++++
+ .../main/releases/0.1.0/entries/entry-0002.md      | 29 +++++++
+ .../main/releases/0.1.0/entries/entry-0003.md      | 28 +++++++
+ .../main/releases/0.1.0/entries/entry-0004.md      | 28 +++++++
+ .../main/releases/0.1.0/entries/entry-0005.md      | 28 +++++++
+ .../main/releases/0.1.0/entries/entry-0006.md      | 27 ++++++
+ .../main/releases/0.1.0/entries/entry-0007.md      | 27 ++++++
+ .../main/releases/0.1.0/entries/entry-0008.md      | 28 +++++++
+ .../main/releases/0.1.0/entries/entry-0009.md      | 28 +++++++
+ .../data/ledgers/main/releases/0.1.0/release.md    | 29 +++++++
+ .ledger/releaseledger/write.lock                   |  0
+ README.md                                          | 24 +++++-
+ RELEASING.md                                       | 32 ++++++++
+ docs/changelog.md                                  | 20 +++++
+ docs/cli.md                                        | 20 +++++
+ docs/index.md                                      | 20 +++++
+ docs/installation.md                               | 18 ++++
+ docs/make.py                                       | 95 +++++++++-------------
+ docs/ownership-boundary.md                         | 16 ++++
+ docs/python-api.md                                 | 15 ++++
+ docs/quickstart.md                                 | 27 ++++++
+ docs/reproducibility.md                            | 13 +++
+ docs/review-workflow.md                            | 12 +++
+ docs/speakers.md                                   |  7 ++
+ examples/basic.ssmd.md                             |  7 ++
+ examples/basic_preview.py                          |  7 ++
+ pyproject.toml                                     |  2 +-
+ tests/test_readme_examples.py                      | 53 ++++++++++++
+ 32 files changed, 711 insertions(+), 73 deletions(-)
+
+diff --git a/.codecrate.toml b/.codecrate.toml
+index 5682c20..9a9d045 100644
+--- a/.codecrate.toml
++++ b/.codecrate.toml
+@@ -5,7 +5,6 @@ dedupe = true
+ metadata = false
+ respect_gitignore = true
+ exclude = ["*/.venv/*", "context_ttsready.*"]
+-gitignore_allow = ["ttsready/_version.py"]
+ include = [
+   "**/*.py",
+   "**/*.toml",
+diff --git a/.github/workflows/python-publish.yml b/.github/workflows/python-publish.yml
+index 099d39f..a7a31a2 100644
+--- a/.github/workflows/python-publish.yml
++++ b/.github/workflows/python-publish.yml
+@@ -10,30 +10,87 @@ permissions:
+   contents: read
+
+ jobs:
+-  deploy:
+-    runs-on: ubuntu-latest
++  test-matrix:
++    name: Test supported Python and OS matrix
++    uses: ./.github/workflows/tests.yml
+
++  verify:
++    name: Verify release artifacts
++    runs-on: ubuntu-latest
+     steps:
+-      - name: Check out release
++      - name: Check out release with tags
+         uses: actions/checkout@v7
++        with:
++          fetch-depth: 0
+
+       - name: Set up Python
+         uses: actions/setup-python@v7
+         with:
+           python-version: "3.13"
+
+-      - name: Install build tooling
+-        run: python -m pip install --upgrade pip build twine
+-      - name: Build package
++      - name: Install project and documentation dependencies
++        run: |
++          python -m pip install --upgrade pip
++          python -m pip install -e ".[dev]"
++          python -m pip install -r docs/requirements.txt
++
++      - name: Compile source and tests
++        run: python -m compileall -q ttsready tests
++
++      - name: Run Ruff
++        run: |
++          python -m ruff check .
++          python -m ruff format --check .
++
++      - name: Run full test suite
++        run: python -m pytest
++
++      - name: Build documentation
++        run: sphinx-build -W -b html docs docs/_build/html
++
++      - name: Build release distributions
+         run: |
+-          rm -rf dist
++          rm -rf dist build *.egg-info
+           python -m build
+-      - name: Check built distributions
+-        run: python -m twine check dist/*
+-      - name: Validate release artifacts
++
++      - name: Check and validate release distributions
+         env:
+           RELEASE_TAG: ${{ github.event.release.tag_name }}
+-        run: python tools/check_release_artifacts.py
++        run: |
++          python -m twine check dist/*
++          python tools/check_release_artifacts.py
++
++      - name: Smoke-test the built wheel in a clean environment
++        run: |
++          python -m venv "$RUNNER_TEMP/ttsready-release-smoke"
++          "$RUNNER_TEMP/ttsready-release-smoke/bin/python" -m pip install --upgrade pip
++          "$RUNNER_TEMP/ttsready-release-smoke/bin/python" -m pip install "$GITHUB_WORKSPACE"/dist/*.whl
++          cd "$RUNNER_TEMP"
++          "$RUNNER_TEMP/ttsready-release-smoke/bin/python" -c "import ttsready; print(ttsready.__version__)"
++          "$RUNNER_TEMP/ttsready-release-smoke/bin/ttsready" --version
++          "$RUNNER_TEMP/ttsready-release-smoke/bin/ttsready" --help
++          "$RUNNER_TEMP/ttsready-release-smoke/bin/python" -c "from importlib.resources import files; assert files('ttsready').joinpath('py.typed').is_file()"
++
++      - name: Upload verified distributions
++        uses: actions/upload-artifact@v4
++        with:
++          name: verified-release-dists
++          path: dist/
++          if-no-files-found: error
++
++  publish:
++    name: Publish verified distributions to PyPI
++    needs: [test-matrix, verify]
++    runs-on: ubuntu-latest
++    permissions:
++      contents: read
++      id-token: write
++    steps:
++      - name: Download verified distributions
++        uses: actions/download-artifact@v4
++        with:
++          name: verified-release-dists
++          path: dist/
+
+       - name: Publish package to PyPI
+         uses: pypa/gh-action-pypi-publish@v1.14.1
+diff --git a/.github/workflows/tests.yml b/.github/workflows/tests.yml
+index f3971d1..8ef6038 100644
+--- a/.github/workflows/tests.yml
++++ b/.github/workflows/tests.yml
+@@ -3,13 +3,14 @@ on:
+   push:
+   pull_request:
+   workflow_call:
++
+ jobs:
+   run:
+     runs-on: ${{ matrix.os }}
+     strategy:
+       matrix:
+         os: [ubuntu-latest, windows-latest, macos-latest]
+-        python-version: ["3.10", "3.11", "3.12", "3.13"]
++        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+     steps:
+     - uses: actions/checkout@v4
+     - name: Setup Python
+@@ -23,3 +24,18 @@ jobs:
+         python -m compileall -q ttsready tests
+     - name: Tests
+       run: pytest -m "not slow"
++
++  docs:
++    runs-on: ubuntu-latest
++    steps:
++    - uses: actions/checkout@v4
++    - name: Setup Python
++      uses: actions/setup-python@v5
++      with:
++        python-version: "3.13"
++    - name: Install documentation dependencies
++      run: |
++        python -m pip install -e ".[dev]"
++        python -m pip install -r docs/requirements.txt
++    - name: Build documentation
++      run: sphinx-build -W -b html docs docs/_build/html
+diff --git a/.ledger/releaseledger/data/ledgers/main/events/events.jsonl b/.ledger/releaseledger/data/ledgers/main/events/events.jsonl
+new file mode 100644
+index 0000000..f8d035a
+--- /dev/null
++++ b/.ledger/releaseledger/data/ledgers/main/events/events.jsonl
+@@ -0,0 +1,18 @@
++{"data":{"status":"planned"},"event":"release.created","event_id":"event-0001","record_revisions":{"release:0.1.0":1},"release_version":"0.1.0","schema_version":2}
++{"data":{"kind":"added","status":"accepted"},"entry_id":"entry-0001","event":"entry.added","event_id":"event-0002","record_revisions":{"entry:0.1.0/entry-0001":1,"release:0.1.0":2},"release_version":"0.1.0","schema_version":2}
++{"data":{"kind":"added","status":"accepted"},"entry_id":"entry-0002","event":"entry.added","event_id":"event-0003","record_revisions":{"entry:0.1.0/entry-0002":1,"release:0.1.0":3},"release_version":"0.1.0","schema_version":2}
++{"data":{"kind":"added","status":"accepted"},"entry_id":"entry-0003","event":"entry.added","event_id":"event-0004","record_revisions":{"entry:0.1.0/entry-0003":1,"release:0.1.0":4},"release_version":"0.1.0","schema_version":2}
++{"data":{"kind":"added","status":"accepted"},"entry_id":"entry-0004","event":"entry.added","event_id":"event-0005","record_revisions":{"entry:0.1.0/entry-0004":1,"release:0.1.0":5},"release_version":"0.1.0","schema_version":2}
++{"data":{"kind":"added","status":"accepted"},"entry_id":"entry-0005","event":"entry.added","event_id":"event-0006","record_revisions":{"entry:0.1.0/entry-0005":1,"release:0.1.0":6},"release_version":"0.1.0","schema_version":2}
++{"data":{"kind":"added","status":"accepted"},"entry_id":"entry-0006","event":"entry.added","event_id":"event-0007","record_revisions":{"entry:0.1.0/entry-0006":1,"release:0.1.0":7},"release_version":"0.1.0","schema_version":2}
++{"data":{"kind":"added","status":"accepted"},"entry_id":"entry-0007","event":"entry.added","event_id":"event-0008","record_revisions":{"entry:0.1.0/entry-0007":1,"release:0.1.0":8},"release_version":"0.1.0","schema_version":2}
++{"data":{"kind":"docs","status":"accepted"},"entry_id":"entry-0008","event":"entry.added","event_id":"event-0009","record_revisions":{"entry:0.1.0/entry-0008":1,"release:0.1.0":9},"release_version":"0.1.0","schema_version":2}
++{"data":{"added_source_refs":[],"fields":["summary"],"removed_source_refs":[],"source_refs_mode":"unchanged"},"entry_id":"entry-0001","event":"entry.updated","event_id":"event-0010","record_revisions":{"entry:0.1.0/entry-0001":2},"release_version":"0.1.0","schema_version":2}
++{"data":{"added_source_refs":[],"fields":["summary"],"removed_source_refs":[],"source_refs_mode":"unchanged"},"entry_id":"entry-0002","event":"entry.updated","event_id":"event-0011","record_revisions":{"entry:0.1.0/entry-0002":2},"release_version":"0.1.0","schema_version":2}
++{"data":{"added_source_refs":[],"fields":["summary"],"removed_source_refs":[],"source_refs_mode":"unchanged"},"entry_id":"entry-0003","event":"entry.updated","event_id":"event-0012","record_revisions":{"entry:0.1.0/entry-0003":2},"release_version":"0.1.0","schema_version":2}
++{"data":{"added_source_refs":[],"fields":["summary"],"removed_source_refs":[],"source_refs_mode":"unchanged"},"entry_id":"entry-0004","event":"entry.updated","event_id":"event-0013","record_revisions":{"entry:0.1.0/entry-0004":2},"release_version":"0.1.0","schema_version":2}
++{"data":{"added_source_refs":[],"fields":["summary"],"removed_source_refs":[],"source_refs_mode":"unchanged"},"entry_id":"entry-0005","event":"entry.updated","event_id":"event-0014","record_revisions":{"entry:0.1.0/entry-0005":2},"release_version":"0.1.0","schema_version":2}
++{"data":{"added_source_refs":[],"fields":["summary"],"removed_source_refs":[],"source_refs_mode":"unchanged"},"entry_id":"entry-0006","event":"entry.updated","event_id":"event-0015","record_revisions":{"entry:0.1.0/entry-0006":2},"release_version":"0.1.0","schema_version":2}
++{"data":{"added_source_refs":[],"fields":["summary"],"removed_source_refs":[],"source_refs_mode":"unchanged"},"entry_id":"entry-0007","event":"entry.updated","event_id":"event-0016","record_revisions":{"entry:0.1.0/entry-0007":2},"release_version":"0.1.0","schema_version":2}
++{"data":{"added_source_refs":[],"fields":["summary"],"removed_source_refs":[],"source_refs_mode":"unchanged"},"entry_id":"entry-0008","event":"entry.updated","event_id":"event-0017","record_revisions":{"entry:0.1.0/entry-0008":2},"release_version":"0.1.0","schema_version":2}
++{"data":{"kind":"added","status":"accepted"},"entry_id":"entry-0009","event":"entry.added","event_id":"event-0018","record_revisions":{"entry:0.1.0/entry-0009":1,"release:0.1.0":10},"release_version":"0.1.0","schema_version":2}
+diff --git a/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0001.md b/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0001.md
+new file mode 100644
+index 0000000..6253136
+--- /dev/null
++++ b/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0001.md
+@@ -0,0 +1,28 @@
++---
++schema_version: 2
++object_type: release_entry
++versioning:
++  schema_version: 1
++  revision: 2
++entry_id: entry-0001
++release_version: 0.1.0
++kind: added
++summary: Added canonical SSMD 0.9 and .ssmdbook input support
++status: accepted
++audience: null
++scopes: []
++source_refs: []
++paths:
++  - ttsready/input.py
++  - README.md
++issues: []
++prs: []
++sources:
++  - README.md
++contributors: []
++breaking: false
++internal: false
++order: 1
++---
++
++Standalone SSMD files and directory or zipped book bundles can be analyzed. Source-format conversion remains the responsibility of ssmdconvert.
+diff --git a/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0002.md b/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0002.md
+new file mode 100644
+index 0000000..e6850dc
+--- /dev/null
++++ b/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0002.md
+@@ -0,0 +1,29 @@
++---
++schema_version: 2
++object_type: release_entry
++versioning:
++  schema_version: 1
++  revision: 2
++entry_id: entry-0002
++release_version: 0.1.0
++kind: added
++summary: Added reports, cached context, and explicit overrides for speech review
++status: accepted
++audience: null
++scopes: []
++source_refs: []
++paths:
++  - ttsready/reporting.py
++  - ttsready/context.py
++  - ttsready/materialization.py
++issues: []
++prs: []
++sources:
++  - README.md
++contributors: []
++breaking: false
++internal: false
++order: 2
++---
++
++Review findings against source spans, inspect cached context, and materialize reviewed sub annotations to a separate artifact by default.
+diff --git a/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0003.md b/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0003.md
+new file mode 100644
+index 0000000..27c813e
+--- /dev/null
++++ b/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0003.md
+@@ -0,0 +1,28 @@
++---
++schema_version: 2
++object_type: release_entry
++versioning:
++  schema_version: 1
++  revision: 2
++entry_id: entry-0003
++release_version: 0.1.0
++kind: added
++summary: Added logical speaker review and materialization as SSMD voice annotations
++status: accepted
++audience: null
++scopes: []
++source_refs: []
++paths:
++  - ttsready/speakers
++  - ttsready/sidecar.py
++issues: []
++prs: []
++sources:
++  - README.md
++contributors: []
++breaking: false
++internal: false
++order: 3
++---
++
++Speaker IDs remain independent of provider-specific voice names and are managed with a sidecar registry.
+diff --git a/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0004.md b/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0004.md
+new file mode 100644
+index 0000000..5791913
+--- /dev/null
++++ b/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0004.md
+@@ -0,0 +1,28 @@
++---
++schema_version: 2
++object_type: release_entry
++versioning:
++  schema_version: 1
++  revision: 2
++entry_id: entry-0004
++release_version: 0.1.0
++kind: added
++summary: Added locks, verification, and freeze output for reproducible preparation
++status: accepted
++audience: null
++scopes: []
++source_refs: []
++paths:
++  - ttsready/reproducibility.py
++  - ttsready/freeze.py
++issues: []
++prs: []
++sources:
++  - README.md
++contributors: []
++breaking: false
++internal: false
++order: 4
++---
++
++Locks capture canonical input and preparation context; verification detects drift, and freeze writes a separate materialized SSMD artifact.
+diff --git a/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0005.md b/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0005.md
+new file mode 100644
+index 0000000..470d88d
+--- /dev/null
++++ b/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0005.md
+@@ -0,0 +1,28 @@
++---
++schema_version: 2
++object_type: release_entry
++versioning:
++  schema_version: 1
++  revision: 2
++entry_id: entry-0005
++release_version: 0.1.0
++kind: added
++summary: Added preview and TXT export from the shared structured TTS plan
++status: accepted
++audience: null
++scopes: []
++source_refs: []
++paths:
++  - ttsready/planning.py
++  - ttsready/output.py
++issues: []
++prs: []
++sources:
++  - README.md
++contributors: []
++breaking: false
++internal: false
++order: 5
++---
++
++Prepared speech can be previewed or exported as plain text without generating audio.
+diff --git a/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0006.md b/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0006.md
+new file mode 100644
+index 0000000..d79811b
+--- /dev/null
++++ b/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0006.md
+@@ -0,0 +1,27 @@
++---
++schema_version: 2
++object_type: release_entry
++versioning:
++  schema_version: 1
++  revision: 2
++entry_id: entry-0006
++release_version: 0.1.0
++kind: added
++summary: Added a public Python API for loading SSMD and preparing previews
++status: accepted
++audience: null
++scopes: []
++source_refs: []
++paths:
++  - ttsready/__init__.py
++issues: []
++prs: []
++sources:
++  - docs/python-api.md
++contributors: []
++breaking: false
++internal: false
++order: 6
++---
++
++The package exports loading, preparation, preview, and structured plan types from ttsready.
+diff --git a/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0007.md b/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0007.md
+new file mode 100644
+index 0000000..23d682b
+--- /dev/null
++++ b/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0007.md
+@@ -0,0 +1,27 @@
++---
++schema_version: 2
++object_type: release_entry
++versioning:
++  schema_version: 1
++  revision: 2
++entry_id: entry-0007
++release_version: 0.1.0
++kind: added
++summary: Added optional lexical and speaker integrations as package extras
++status: accepted
++audience: null
++scopes: []
++source_refs: []
++paths:
++  - pyproject.toml
++issues: []
++prs: []
++sources:
++  - README.md
++contributors: []
++breaking: false
++internal: false
++order: 7
++---
++
++The lexical and speakers extras add optional evidence and speaker-suggestion integrations without expanding the core dependency set.
+diff --git a/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0008.md b/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0008.md
+new file mode 100644
+index 0000000..40fe30f
+--- /dev/null
++++ b/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0008.md
+@@ -0,0 +1,28 @@
++---
++schema_version: 2
++object_type: release_entry
++versioning:
++  schema_version: 1
++  revision: 2
++entry_id: entry-0008
++release_version: 0.1.0
++kind: docs
++summary:
++  Documented installation, quickstart, CLI, review, reproducibility, speakers,
++  and API boundaries
++status: accepted
++audience: null
++scopes: []
++source_refs: []
++paths:
++  - docs/index.md
++  - docs/installation.md
++issues: []
++prs: []
++sources:
++  - README.md
++contributors: []
++breaking: false
++internal: false
++order: 8
++---
+diff --git a/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0009.md b/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0009.md
+new file mode 100644
+index 0000000..c933870
+--- /dev/null
++++ b/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0009.md
+@@ -0,0 +1,28 @@
++---
++schema_version: 2
++object_type: release_entry
++versioning:
++  schema_version: 1
++  revision: 1
++entry_id: entry-0009
++release_version: 0.1.0
++kind: added
++summary: Added Python 3.14 to the Python 3.10 through 3.14 CI matrix
++status: accepted
++audience: null
++scopes: []
++source_refs: []
++paths:
++  - .github/workflows/tests.yml
++  - README.md
++issues: []
++prs: []
++sources:
++  - .github/workflows/tests.yml
++contributors: []
++breaking: false
++internal: false
++order: 9
++---
++
++The test workflow now includes Python 3.14 across its operating-system matrix.
+diff --git a/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/release.md b/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/release.md
+new file mode 100644
+index 0000000..75b5b51
+--- /dev/null
++++ b/.ledger/releaseledger/data/ledgers/main/releases/0.1.0/release.md
+@@ -0,0 +1,29 @@
++---
++schema_version: 2
++object_type: release
++versioning:
++  schema_version: 1
++  revision: 10
++version: 0.1.0
++status: planned
++history_state: curated
++title: ttsready 0.1.0
++released_at: null
++previous_version: null
++cancel_reason: null
++superseded_by: null
++changelog_file: CHANGELOG.md
++boundary_ref: null
++source_refs: []
++source_count: null
++entry_count: 9
++artifact_count: 0
++git_base_ref: null
++git_base_sha: null
++git_head_ref: null
++git_head_sha: null
++git_range: null
++git_commit_count: null
++---
++
++Initial alpha release of canonical SSMD-first TTS preparation, review, reproducibility, and text export workflows.
+diff --git a/.ledger/releaseledger/write.lock b/.ledger/releaseledger/write.lock
+new file mode 100644
+index 0000000..e69de29
+diff --git a/README.md b/README.md
+index 852b2b3..362daf1 100644
+--- a/README.md
++++ b/README.md
+@@ -2,6 +2,8 @@
+
+ `ttsready` analyzes canonical SSMD 0.9 documents and `.ssmdbook` bundles, reviews speech decisions, and can materialize approved changes back into SSMD. It does not ingest EPUB, PDF, Markdown, HTML, or plain-text source files directly, and it does not generate audio.
+
++Python 3.10 or newer is required. The CI matrix targets Python 3.10 through 3.14. See the [documentation](docs/index.md) for the installation guide, quickstart, and workflows.
++
+ The interchange boundary is the SSMD artifact:
+
+ ```text
+@@ -41,6 +43,20 @@ python -m pip install 'ttsready[lexical]'
+ python -m pip install 'ttsready[speakers]'
+ ```
+
++## Quickstart
++
++From the repository root, run the included example through the main CLI workflows:
++
++```bash
++python -m pip install -e .
++ttsready preflight examples/basic.ssmd.md
++ttsready report examples/basic.ssmd.md
++ttsready preview examples/basic.ssmd.md
++ttsready export examples/basic.ssmd.md --format txt -o /tmp/basic.txt
++```
++
++The same input can be loaded with the [Python API](docs/python-api.md). See [examples/basic_preview.py](examples/basic_preview.py) for a complete runnable example.
++
+ ## Review workflow
+
+ Create a report to inspect Spokenform candidates and their SSMD source spans:
+@@ -79,8 +95,8 @@ ttsready speaker-materialize novel.ssmdbook --config novel.ttsready.yaml \
+ Create and verify a strict lock for canonical content, runtime, normalization profile, and prepared output. `freeze` writes a separate SSMD artifact with the selected automatic transformations materialized:
+
+ ```bash
+-ttsready lock novel.ssmdbook
+-ttsready verify novel.ssmdbook novel.ssmdbook.ttsready.lock.json
++ttsready lock novel.ssmdbook -o novel.ssmdbook.ttsready.lock.json
++ttsready verify novel.ssmdbook --lock novel.ssmdbook.ttsready.lock.json
+ ttsready freeze novel.ssmdbook -o novel.frozen.ssmdbook
+ ```
+
+@@ -119,3 +135,7 @@ document = load_ssmd(ssmd_text, section_id="chapter-0001")
+ - `ttsready` reviews canonical SSMD and writes explicit reviewed semantics such as `sub` and logical `voice` annotations into SSMD.
+ - Downstream tools consume canonical or reviewed SSMD. Tools exchange content through SSMD documents, not through a `ttsready` runtime integration API.
+ - The existing `ssmdconvert.speech` API remains available for compatibility. It is separate from the `ttsready` review and materialization workflow.
++
++## License
++
++`ttsready` is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for the full text.
+diff --git a/RELEASING.md b/RELEASING.md
+new file mode 100644
+index 0000000..5f37d5a
+--- /dev/null
++++ b/RELEASING.md
+@@ -0,0 +1,32 @@
++# Releasing ttsready
++
++Use this checklist for a release candidate. PyPI publishing is performed by the GitHub Actions release workflow and will stop unless its verification jobs pass.
++
++1. Confirm the exact release commit has green required CI checks, including the Python and operating-system test matrix and warning-free documentation build.
++2. Install the development and documentation dependencies, then run the source, lint, formatting, test, and documentation checks:
++
++   ```bash
++   python -m pip install -e ".[dev]"
++   python -m pip install -r docs/requirements.txt
++   python -m compileall -q ttsready tests
++   python -m ruff check .
++   python -m ruff format --check .
++   python -m pytest
++   sphinx-build -W -b html docs docs/_build/html
++   ```
++
++3. Review and commit the release notes and any intended documentation changes.
++4. Build clean distributions, check them, and verify that their versions match the intended tag:
++
++   ```bash
++   rm -rf build dist *.egg-info
++   python -m build
++   python -m twine check dist/*
++   RELEASE_TAG=v0.1.0 python tools/check_release_artifacts.py
++   ```
++
++5. Install the wheel in a clean virtual environment from outside the checkout. Check `import ttsready`, `ttsready --version`, `ttsready --help`, and that `ttsready/py.typed` is installed.
++6. Create tag `v0.1.0` on the verified commit and publish the GitHub Release. The publish workflow reruns verification, validates the release-tag version, and only then uploads the verified distributions to PyPI.
++7. After the workflow completes, install `ttsready==0.1.0` in a fresh environment outside the checkout and repeat the import and CLI smoke checks.
++
++Do not publish when any required CI, documentation, artifact, or clean-wheel check fails. Resolve the failing check and repeat the release-candidate verification before creating the tag or release.
+diff --git a/docs/changelog.md b/docs/changelog.md
+new file mode 100644
+index 0000000..bbe429f
+--- /dev/null
++++ b/docs/changelog.md
+@@ -0,0 +1,20 @@
++# Changelog
++
++## [0.1.0] - Unreleased
++
++### Added
++
++- Added canonical SSMD 0.9 and .ssmdbook input support
++- Added reports, cached context, and explicit overrides for speech review
++- Added logical speaker review and materialization as SSMD voice annotations
++- Added locks, verification, and freeze output for reproducible preparation
++- Added preview and TXT export from the shared structured TTS plan
++- Added a public Python API for loading SSMD and preparing previews
++- Added optional lexical and speaker integrations as package extras
++- Added Python 3.14 to the Python 3.10 through 3.14 CI matrix
++
++### Documentation
++
++- Documented installation, quickstart, CLI, review, reproducibility, speakers, and API boundaries
++
++<!-- generated by releaseledger -->
+diff --git a/docs/cli.md b/docs/cli.md
+new file mode 100644
+index 0000000..c0edbcb
+--- /dev/null
++++ b/docs/cli.md
+@@ -0,0 +1,20 @@
++# Command-line interface
++
++Run `ttsready --help` to see all commands and `ttsready COMMAND --help` for command-specific options. The top-level commands are:
++
++- `convert`, `preflight`, `chapters`: prepare, validate, or inspect canonical SSMD input.
++- `report`, `context`, `review`, `override`: analyze content and support review of findings.
++- `speakers`, `speaker-set`, `speaker-materialize`: review logical speaker assignments and materialize decisions.
++- `preview`, `export`: render prepared text or export it as TXT.
++- `lock`, `verify`, `freeze`: check and materialize reproducible output.
++
++Typical first checks against a standalone document are:
++
++```bash
++ttsready preflight examples/basic.ssmd.md
++ttsready report examples/basic.ssmd.md
++ttsready preview examples/basic.ssmd.md
++ttsready export examples/basic.ssmd.md --format txt -o /tmp/basic.txt
++```
++
++Commands accept standalone `.ssmd` and `.ssmd.md` files, `.ssmdbook` directory bundles, and `.ssmdbook.zip` bundles where supported. Consult each command's `--help` for its exact options.
+diff --git a/docs/index.md b/docs/index.md
+new file mode 100644
+index 0000000..1519368
+--- /dev/null
++++ b/docs/index.md
+@@ -0,0 +1,20 @@
++# ttsready documentation
++
++`ttsready` reviews canonical SSMD documents for speech preparation and writes explicit, reviewed SSMD changes. Source-format conversion belongs to `ssmdconvert`; audio rendering belongs to downstream tools.
++
++Start with the [installation guide](installation.md) and [quickstart](quickstart.md). The quickstart uses the runnable `examples/basic.ssmd.md` fixture from the repository.
++
++```{toctree}
++:maxdepth: 2
++:caption: User guide
++
++installation
++quickstart
++cli
++python-api
++review-workflow
++reproducibility
++speakers
++ownership-boundary
++changelog
++```
+diff --git a/docs/installation.md b/docs/installation.md
+new file mode 100644
+index 0000000..fd0a8cb
+--- /dev/null
++++ b/docs/installation.md
+@@ -0,0 +1,18 @@
++# Installation
++
++`ttsready` requires Python 3.10 or newer. Install the package from PyPI:
++
++```bash
++python -m pip install ttsready
++```
++
++Optional extras provide lexical evidence and speaker suggestions:
++
++```bash
++python -m pip install 'ttsready[lexical]'
++python -m pip install 'ttsready[speakers]'
++```
++
++The core package uses `ssmd` to parse canonical SSMD and `ssmdconvert` to load and write `.ssmdbook` bundles. It does not install EPUB or PDF readers. Convert source formats to SSMD with `ssmdconvert` before using `ttsready`.
++
++See the [quickstart](quickstart.md) to check an example document, or the [CLI reference](cli.md) for command summaries.
+diff --git a/docs/make.py b/docs/make.py
+index 49bb6a6..c3fe00e 100755
+--- a/docs/make.py
++++ b/docs/make.py
+@@ -1,87 +1,68 @@
+ #!/usr/bin/env python
+-"""
+-Script to build documentation for ttsready.
++"""Build Sphinx documentation for ttsready.
+
+-This script builds the Sphinx documentation for the ttsready package.
+-It can be run using:
+-    python docs/make.py [option]
++Run ``python docs/make.py [target]`` from any working directory.
+
+-Options:
+-    clean   - clean the build directory
+-    html    - build HTML documentation
+-    dirhtml - build HTML documentation with directory structure
+-    all     - build all documentation formats
+-    help    - show help message
++Targets include ``clean``, ``html``, ``dirhtml``, ``latex``, ``all``, and
++``help``.
+ """
+
+-import os
+ import shutil
+ import subprocess
+ import sys
++from pathlib import Path
++
++DOCS_DIR = Path(__file__).resolve().parent
++BUILD_DIR = DOCS_DIR / "_build"
++VALID_TARGETS = {
++    "html",
++    "dirhtml",
++    "latex",
++    "latexpdf",
++    "text",
++    "man",
++    "changes",
++    "linkcheck",
++    "doctest",
++    "all",
++}
++
++
++def build(target):
++    """Run Sphinx for one builder, treating warnings as errors."""
++    output_dir = BUILD_DIR / target
++    command = ["sphinx-build", "-W", "-b", target, str(DOCS_DIR), str(output_dir)]
++    print(f"Building {target} documentation...")
++    subprocess.run(command, check=True)
+
+
+ def main():
+-    """Run the script."""
+-    sphinx_build = "sphinx-build"
+-
+-    # Determine if we're being run from docs/ or from project root
+-    script_dir = os.path.dirname(os.path.abspath(__file__))
+-    if os.path.basename(script_dir) == "docs":
+-        # Running from docs directory
+-        build_dir = "_build"
+-        source_dir = "."
+-    else:
+-        # Running from project root
+-        build_dir = os.path.join("docs", "_build")
+-        source_dir = "docs"
+-
++    """Run the requested documentation target."""
+     target = "html" if len(sys.argv) < 2 else sys.argv[1]
+
+     if target == "clean":
+-        if os.path.exists(build_dir):
+-            print(f"Cleaning {build_dir}...")
+-            shutil.rmtree(build_dir)
++        if BUILD_DIR.exists():
++            print(f"Cleaning {BUILD_DIR}...")
++            shutil.rmtree(BUILD_DIR)
+         return 0
+
+     if target == "help":
+         print(__doc__)
+         return 0
+
+-    if not os.path.exists(build_dir):
+-        os.makedirs(build_dir)
+-
+-    # Set of valid targets
+-    valid_targets = {
+-        "html",
+-        "dirhtml",
+-        "latex",
+-        "latexpdf",
+-        "text",
+-        "man",
+-        "changes",
+-        "linkcheck",
+-        "doctest",
+-        "all",
+-    }
+-
+-    if target not in valid_targets:
++    if target not in VALID_TARGETS:
+         print(f"Unknown target: {target}")
+         print("Use 'help' target for help")
+         return 1
+
++    BUILD_DIR.mkdir(parents=True, exist_ok=True)
+     if target == "all":
+-        # Build all formats
+-        for fmt in ["html", "dirhtml", "latex"]:
+-            cmd = [sphinx_build, "-b", fmt, source_dir, os.path.join(build_dir, fmt)]
+-            print(f"Building {fmt} documentation...")
+-            subprocess.run(cmd, check=True)
++        for builder in ["html", "dirhtml", "latex"]:
++            build(builder)
+     else:
+-        # Build specific format
+-        cmd = [sphinx_build, "-b", target, source_dir, os.path.join(build_dir, target)]
+-        print(f"Building {target} documentation...")
+-        subprocess.run(cmd, check=True)
++        build(target)
+
+-    print(f"Build finished. Documentation is in {os.path.join(build_dir, target)}")
++    print(f"Build finished. Documentation is in {BUILD_DIR / target}")
+     return 0
+
+
+diff --git a/docs/ownership-boundary.md b/docs/ownership-boundary.md
+new file mode 100644
+index 0000000..5633c30
+--- /dev/null
++++ b/docs/ownership-boundary.md
+@@ -0,0 +1,16 @@
++# Ownership boundary
++
++`ttsready` has an SSMD-first boundary:
++
++```text
++source formats -> ssmdconvert -> canonical SSMD -> ttsready review/materialization
++                                                        |
++                                                        v
++                                         reviewed SSMD for downstream TTS
++```
++
++- `ssmdconvert` owns source-format extraction/conversion and `.ssmdbook` loading, validation, and writes.
++- `ttsready` owns speech analysis, review, reproducibility checks, and explicit reviewed SSMD changes such as `sub` and logical `voice` annotations.
++- Downstream renderers own provider-specific voice configuration and audio generation.
++
++`ttsready` accepts canonical `.ssmd`, `.ssmd.md`, `.ssmdbook`, and `.ssmdbook.zip` input. Convert EPUB, PDF, Markdown, HTML, or plain text with `ssmdconvert` first. The two projects exchange content through SSMD artifacts, not a renderer integration API.
+diff --git a/docs/python-api.md b/docs/python-api.md
+new file mode 100644
+index 0000000..5d162ec
+--- /dev/null
++++ b/docs/python-api.md
+@@ -0,0 +1,15 @@
++# Python API
++
++The supported API is the surface exported by `ttsready.__all__`. The main preparation flow loads canonical input, builds a structured TTS plan, and renders a plain-text preview:
++
++```python
++from ttsready import load, prepare_tts_plan, render_preview
++
++document = load("novel.ssmdbook")
++plan = prepare_tts_plan(document, language="en")
++preview = render_preview(plan)
++```
++
++For SSMD content already in memory, use `load_ssmd(text, section_id=...)`. `prepare_tts_plan()` returns structured segments and a report; it does not render audio. `render_preview()` returns text prepared from that plan.
++
++Other exported operations include `convert`, `prepare`, `source_paragraphs`, and `parse_section_range`. Exported data types include `Document`, `Section`, `TTSPlan`, `PreparedSegment`, `RenderOptions`, `ConversionResult`, `ConversionReport`, and related context/statistics types. See the package's `__all__` for the complete exported-name list. Internal modules are not a promise of public API stability.
+diff --git a/docs/quickstart.md b/docs/quickstart.md
+new file mode 100644
+index 0000000..6cd84d3
+--- /dev/null
++++ b/docs/quickstart.md
+@@ -0,0 +1,27 @@
++# Quickstart
++
++From the repository root, install the package and run the commands against the included valid SSMD fixture:
++
++```bash
++python -m pip install -e .
++ttsready preflight examples/basic.ssmd.md
++ttsready report examples/basic.ssmd.md
++ttsready preview examples/basic.ssmd.md
++ttsready export examples/basic.ssmd.md --format txt -o /tmp/basic.txt
++```
++
++`preflight` validates and prepares without writing output. `report` stores a review report. `preview` prints the prepared speech, while `export` writes plain text. These commands do not generate audio.
++
++The same input can be loaded through the Python API:
++
++```python
++from pathlib import Path
++
++from ttsready import load, prepare_tts_plan, render_preview
++
++document = load(Path("examples/basic.ssmd.md"))
++plan = prepare_tts_plan(document, language="en")
++print(render_preview(plan))
++```
++
++For input conversion, first create canonical SSMD or an `.ssmdbook` with `ssmdconvert`. See [supported CLI commands](cli.md) and the [review workflow](review-workflow.md) for what to do with report findings.
+diff --git a/docs/reproducibility.md b/docs/reproducibility.md
+new file mode 100644
+index 0000000..5b214f5
+--- /dev/null
++++ b/docs/reproducibility.md
+@@ -0,0 +1,13 @@
++# Reproducibility
++
++The reproducibility commands are `lock`, `verify`, and `freeze`:
++
++```bash
++ttsready lock SOURCE -o lock.json
++ttsready verify SOURCE --lock lock.json
++ttsready freeze SOURCE -o reviewed.ssmdbook
++```
++
++A lock records the canonical content and the runtime/profile details needed to verify the prepared output. `verify` checks that the current input still matches the lock. `freeze` writes a separate artifact with the selected automatic transformations materialized. It does not overwrite the source unless an explicit in-place option is used.
++
++For standalone SSMD input, use the lock path reported by the CLI. For bundle-specific options, run `ttsready lock --help`, `ttsready verify --help`, or `ttsready freeze --help`.
+diff --git a/docs/review-workflow.md b/docs/review-workflow.md
+new file mode 100644
+index 0000000..433bec3
+--- /dev/null
++++ b/docs/review-workflow.md
+@@ -0,0 +1,12 @@
++# Review workflow
++
++The review workflow starts with an analysis report and keeps decisions separate from automatic suggestions:
++
++1. Run `ttsready report SOURCE` and inspect the report and source spans.
++2. Use `ttsready context SOURCE CHANGE_ID` to inspect cached source context for a finding.
++3. Review the finding and decide whether an explicit SSMD change is appropriate.
++4. Use `ttsready override SOURCE CHANGE_ID --spoken TEXT` to write a reviewed `sub` annotation. By default, the result is a separate `.reviewed` artifact.
++
++Use `--write` only when you explicitly intend to replace a source file. Reports and cached analysis do not themselves change SSMD. Generate IDs from the current report rather than guessing them.
++
++Speaker review uses the speaker workflow and sidecar registry described in [Speakers](speakers.md). For input conversion and the ownership boundaries, see [Ownership boundary](ownership-boundary.md).
+diff --git a/docs/speakers.md b/docs/speakers.md
+new file mode 100644
+index 0000000..08a6d34
+--- /dev/null
++++ b/docs/speakers.md
+@@ -0,0 +1,7 @@
++# Speakers
++
++Speaker assignments in `ttsready` use logical speaker IDs, not voice names from a particular speech provider. This keeps reviewed SSMD independent of downstream renderer configuration.
++
++The speaker workflow reads utterances and optional speaker suggestions, stores decisions in a sidecar registry, and can materialize accepted or manual decisions as SSMD `voice` annotations. Use `ttsready speakers --help` to inspect scanning options, `ttsready speaker-set --help` to see how to record a decision, and `ttsready speaker-materialize --help` to materialize one.
++
++Generate utterance IDs from the current speaker scan. Do not guess or reuse IDs from another source snapshot. Provider-specific voice selection and audio rendering belong to downstream tools.
+diff --git a/examples/basic.ssmd.md b/examples/basic.ssmd.md
+new file mode 100644
+index 0000000..49cd795
+--- /dev/null
++++ b/examples/basic.ssmd.md
+@@ -0,0 +1,7 @@
++---
++ssmd_version: "0.9"
++language: en
++---
++
++A young reader opened a book.
++She found a quiet story.
+diff --git a/examples/basic_preview.py b/examples/basic_preview.py
+new file mode 100644
+index 0000000..4b99e5f
+--- /dev/null
++++ b/examples/basic_preview.py
+@@ -0,0 +1,7 @@
++from pathlib import Path
++
++from ttsready import load, prepare_tts_plan, render_preview
++
++document = load(Path(__file__).with_name("basic.ssmd.md"))
++plan = prepare_tts_plan(document, language="en")
++print(render_preview(plan), end="")
+diff --git a/pyproject.toml b/pyproject.toml
+index 1b433e3..6419ab9 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -8,7 +8,7 @@ dynamic = ["version"]
+ description = "Analyze canonical SSMD and materialize reviewed TTS semantics."
+ readme = "README.md"
+ requires-python = ">=3.10"
+-license = "MIT"
++license = "Apache-2.0"
+ authors = [{ name = "Holger Nahrstaedt" }]
+ keywords = ["tts", "text-to-speech", "ssmd", "spokenform", "reproducibility"]
+ classifiers = [
+diff --git a/tests/test_readme_examples.py b/tests/test_readme_examples.py
+new file mode 100644
+index 0000000..9920561
+--- /dev/null
++++ b/tests/test_readme_examples.py
+@@ -0,0 +1,53 @@
++from __future__ import annotations
++
++import os
++import subprocess
++import sys
++from pathlib import Path
++
++ROOT = Path(__file__).parents[1]
++SOURCE = ROOT / "examples" / "basic.ssmd.md"
++PYTHON_EXAMPLE = ROOT / "examples" / "basic_preview.py"
++
++
++def test_python_api_example_runs() -> None:
++    result = subprocess.run(
++        [sys.executable, str(PYTHON_EXAMPLE)],
++        cwd=ROOT,
++        capture_output=True,
++        check=False,
++        text=True,
++    )
++
++    assert result.returncode == 0, result.stderr
++    assert result.stdout == "A young reader opened a book.\nShe found a quiet story.\n"
++
++
++def test_quickstart_cli_commands_run(tmp_path: Path) -> None:
++    env = os.environ.copy()
++    env["TTSREADY_CACHE_DIR"] = str(tmp_path / "cache")
++    export_path = tmp_path / "basic.txt"
++    lock_path = tmp_path / "basic.lock.json"
++    commands = [
++        ["preflight", str(SOURCE)],
++        ["report", str(SOURCE)],
++        ["preview", str(SOURCE)],
++        ["lock", str(SOURCE), "-o", str(lock_path)],
++        ["verify", str(SOURCE), "--lock", str(lock_path)],
++        ["export", str(SOURCE), "--format", "txt", "-o", str(export_path)],
++    ]
++
++    for command in commands:
++        result = subprocess.run(
++            [sys.executable, "-m", "ttsready", *command],
++            cwd=ROOT,
++            capture_output=True,
++            check=False,
++            env=env,
++            text=True,
++        )
++        assert result.returncode == 0, result.stderr
++
++    assert export_path.read_text(encoding="utf-8") == (
++        "A young reader opened a book.\nShe found a quiet story.\n"
++    )
