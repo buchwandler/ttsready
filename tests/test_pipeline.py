@@ -39,6 +39,49 @@ def test_prepare_without_spokenform_keeps_short_paragraphs() -> None:
     assert result.report.warnings == []
 
 
+def test_normalization_profile_preserves_residual_sequences() -> None:
+    assert pipeline.normalization_profile("en").sequence_fallback_mode == "preserve"
+
+
+def test_residual_sequences_stay_lexical_and_structured_rules_remain_active() -> None:
+    residual_text = (
+        "in-system target/destination bot-pilots high-threat Barish-Estranza "
+        "build-up penetration-testing we/somebody where/who ART EVAC"
+    )
+    structured_text = "Chapter 1 Null+1 3–2–1 2.0 etc."
+    result = pipeline.prepare(document(f"{residual_text}\n{structured_text}"), language="en")
+    report = result.report
+    assert report is not None
+
+    for phrase in (
+        "in-system",
+        "target/destination",
+        "bot-pilots",
+        "high-threat",
+        "Barish-Estranza",
+        "build-up",
+        "penetration-testing",
+        "we/somebody",
+        "where/who",
+        "ART",
+        "EVAC",
+    ):
+        assert phrase in result.text
+    assert "i n hyphen s y s t e m" not in result.text
+    assert "t a r g e t slash" not in result.text
+    assert "B a r i s h hyphen" not in result.text
+    assert all(change.rule != "fallback.sequence" for change in report.changes)
+    assert "fallback.sequence" not in report.spokenform.rules
+    assert "sequence_fallback" not in report.spokenform.stage_edits
+
+    assert "chapter one" in result.text
+    assert "Null plus one" in result.text
+    assert "two point zero" in result.text
+    assert "et cetera" in result.text
+    assert report.spokenform.rules["sequence.legal"] == 1
+    assert report.spokenform.rules["sequence.math"] == 1
+
+
 def test_title_is_optional() -> None:
     with_title = pipeline.prepare(
         document("Body.", title="Chapter One"),

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,6 +14,7 @@ import ttsready.pipeline as pipeline
 from ttsready.cli import app
 from ttsready.input import load
 from ttsready.pipeline import prepare
+from ttsready.reproducibility import normalization_fingerprints
 from ttsready.sidecar import (
     Sidecar,
     SpeechOverride,
@@ -73,6 +75,18 @@ def test_lock_creation_is_deterministic_and_verification_is_strict(tmp_path: Pat
     assert first_record["normalization_profile"]["language"] == "en-US"
     assert len(first_record["normalization_profile"]["pronunciation_profile_sha256"]) == 64
 
+    profile_options = asdict(pipeline.normalization_profile("en-US"))
+    assert profile_options["sequence_fallback_mode"] == "preserve"
+    lock_profile = first_record["normalization_profile"]
+    assert (
+        lock_profile["options_sha256"]
+        == normalization_fingerprints("en-US", profile_options, None)["options_sha256"]
+    )
+    spell_options = {**profile_options, "sequence_fallback_mode": "spell"}
+    assert (
+        lock_profile["options_sha256"]
+        != normalization_fingerprints("en-US", spell_options, None)["options_sha256"]
+    )
     verified = runner.invoke(app, ["verify", str(source), "--lock", str(first)])
     assert verified.exit_code == 0, verified.output
 

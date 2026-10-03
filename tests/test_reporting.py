@@ -8,12 +8,16 @@ import pytest
 from ttsready.models import (
     ContextRecord,
     ConversionReport,
+    Document,
+    Section,
     SectionStats,
     SentenceContext,
+    SourceInfo,
     SpokenChange,
     SpokenformStats,
 )
 from ttsready.output import OutputArtifact, OutputPlan
+from ttsready.pipeline import prepare as prepare_document
 from ttsready.reporting import (
     format_preflight,
     json_report,
@@ -195,3 +199,25 @@ def test_write_report_accepts_explicit_format_without_suffix_and_rejects_conflic
     assert json.loads(extensionless.read_text(encoding="utf-8"))["schema"] == ("ttsready.report.v2")
     with pytest.raises(ValueError, match="conflicts"):
         write_report(tmp_path / "report.md", report, format="json")
+
+
+def test_markdown_report_omits_residual_fallback_from_real_pipeline() -> None:
+    source_text = "in-system target/destination Barish-Estranza ART EVAC"
+    document = Document(
+        SourceInfo(Path("residual.txt"), "text", "text/plain"),
+        [Section("section-1", source_text)],
+        {"title": "Residual prose", "language": "en"},
+    )
+    prepared = prepare_document(document, language="en")
+    report = prepared.report
+    assert report is not None
+    rendered = markdown_report(report)
+
+    assert all(
+        phrase in prepared.text
+        for phrase in ("in-system", "target/destination", "Barish-Estranza", "ART", "EVAC")
+    )
+    assert "fallback.sequence" not in rendered
+    assert "| sequence_fallback |" not in rendered
+    assert "fallback.sequence" not in report.spokenform.rules
+    assert "sequence_fallback" not in report.spokenform.stage_edits

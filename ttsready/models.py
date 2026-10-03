@@ -65,7 +65,7 @@ class NormalizationProfile:
     normalize_line_whitespace: bool = False
     collapse_blank_lines: bool = False
     generic_acronym_mode: str = "known_only"
-    sequence_fallback_mode: str = "spell"
+    sequence_fallback_mode: str = "preserve"
     expand_structured: bool = True
     expand_numbers: bool = True
 

@@ -12,6 +12,7 @@ from spokenform.language import base_language
 
 from . import __version__
 from .analysis import AnalysisCacheError, load_cached_report, prepare_cached_report
+from .cli_help import AdaptiveTyper, AdaptiveTyperGroup
 from .context import context_payload, format_bug_report, format_context, render_context_json
 from .errors import TTSReadyError
 from .input import load
@@ -184,7 +185,8 @@ ReportFormatOption = Annotated[
     typer.Option("--format", help="Report format; inferred from -o when possible."),
 ]
 
-app = typer.Typer(
+app = AdaptiveTyper(
+    cls=AdaptiveTyperGroup,
     add_completion=False,
     no_args_is_help=True,
     rich_markup_mode=None,

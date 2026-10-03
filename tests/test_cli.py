@@ -57,6 +57,55 @@ def test_root_help_lists_commands_without_source_argument() -> None:
     assert "--report" not in result.output
 
 
+@pytest.mark.parametrize("terminal_width", [40, 48, 60])
+def test_report_help_is_readable_on_narrow_terminals(terminal_width: int) -> None:
+    result = runner.invoke(
+        cli.app,
+        ["report", "--help"],
+        terminal_width=terminal_width,
+    )
+
+    assert result.exit_code == 0, result.output
+    output_lines = result.output.splitlines()
+    normalized = " ".join(result.output.split())
+
+    assert any(line.strip().startswith("--max-paragraph-chars ") for line in output_lines)
+    assert any(line.strip() == "--spokenform / --no-spokenform" for line in output_lines)
+    assert any(line.strip() == "--titles / --no-titles" for line in output_lines)
+    assert any(line.strip().startswith("--format ") and "md|json" in line for line in output_lines)
+    assert "Semantic TTS chunk limit after spokenform normalization." in normalized
+
+    option_index = next(
+        index
+        for index, line in enumerate(output_lines)
+        if line.strip().startswith("--max-paragraph-chars ")
+    )
+    assert output_lines[option_index + 1].lstrip().startswith("Semantic TTS chunk limit")
+    assert len(output_lines[option_index + 1]) - len(output_lines[option_index + 1].lstrip()) >= 6
+
+
+def test_narrow_root_help_stacks_commands_and_descriptions() -> None:
+    result = runner.invoke(cli.app, ["--help"], terminal_width=40)
+
+    assert result.exit_code == 0, result.output
+    lines = result.output.splitlines()
+    assert all(command in result.output for command in ("convert", "export", "report"))
+
+    report_index = lines.index("  report")
+    assert lines[report_index + 1].startswith("      ")
+    assert lines[report_index + 1].strip()
+
+
+def test_report_help_keeps_compact_layout_on_wide_terminals() -> None:
+    result = runner.invoke(cli.app, ["report", "--help"], terminal_width=80)
+
+    assert result.exit_code == 0, result.output
+    assert any(
+        line.startswith("  --config") and "YAML customization sidecar." in line
+        for line in result.output.splitlines()
+    )
+
+
 def test_root_without_args_shows_help() -> None:
     result = runner.invoke(cli.app, [])
 

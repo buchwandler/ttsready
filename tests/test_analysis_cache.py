@@ -10,6 +10,7 @@ from ssmdconvert import SourceInfo as BookSourceInfo
 from typer.testing import CliRunner
 
 import ttsready.input as input_loader
+import ttsready.pipeline as pipeline
 from ttsready.cli import app
 
 runner = CliRunner()
@@ -121,3 +122,32 @@ def test_report_reuses_unaffected_chapter_analysis(monkeypatch, tmp_path: Path) 
 
     assert context.exit_code == 0, context.output
     assert json.loads(context.output)["spoken_sentence_text"] == "The first chapter has three."
+
+
+def test_sequence_policy_change_invalidates_spell_profile_cache(
+    monkeypatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "book.ssmd.md"
+    source.write_text(_ssmd("Book", "in-system target/destination"), encoding="utf-8")
+    monkeypatch.setenv("TTSREADY_CACHE_DIR", str(tmp_path / "cache"))
+    preserve_profile = pipeline.normalization_profile
+    monkeypatch.setattr(
+        pipeline,
+        "normalization_profile",
+        lambda language: replace(preserve_profile(language), sequence_fallback_mode="spell"),
+    )
+
+    spell_report = _report(source)
+    assert spell_report["normalization_profile"]["sequence_fallback_mode"] == "spell"
+    assert any(change["rule"] == "fallback.sequence" for change in spell_report["changes"])
+
+    monkeypatch.setattr(pipeline, "normalization_profile", preserve_profile)
+    preserve_report = _report(source)
+
+    assert preserve_report["normalization_profile"]["sequence_fallback_mode"] == "preserve"
+    assert spell_report["analysis_id"] != preserve_report["analysis_id"]
+    spoken_text = preserve_report["contexts"][0]["spoken_text"]
+    assert "in-system" in spoken_text
+    assert "target/destination" in spoken_text
+    assert all(change["rule"] != "fallback.sequence" for change in preserve_report["changes"])
+    assert "sequence_fallback" not in preserve_report["spokenform"]["stage_edits"]
