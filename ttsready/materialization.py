@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import os
 import re
 import stat
@@ -11,7 +12,7 @@ from pathlib import Path
 
 import ssmd
 from ssmd.utils import format_ssmd_attr
-from ssmdconvert import BookBundleError, load_book_bundle, write_book_bundle
+from ssmdconvert import BookBundleError, load_book_bundle, load_book_workspace, write_book_bundle
 
 from .analysis import load_cached_report
 from .errors import TTSReadyError
@@ -339,7 +340,16 @@ def _write_standalone_atomic(path: Path, source: bytes, *, overwrite: bool) -> N
                 os.chmod(temporary, stat.S_IMODE(path.stat().st_mode))
             os.replace(temporary, path)
         else:
-            os.link(temporary, path)
+            try:
+                os.link(temporary, path)
+            except (AttributeError, OSError) as exc:
+                if (
+                    isinstance(exc, OSError)
+                    and exc.errno not in {errno.EOPNOTSUPP, errno.EXDEV, errno.ENOSYS}
+                ):
+                    raise
+                with path.open("xb") as stream:
+                    stream.write(temporary.read_bytes())
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -374,7 +384,7 @@ def _write_updated_section(
 ) -> Path:
     if source.name.casefold().endswith((".ssmdbook", ".ssmdbook.zip")):
         try:
-            book = load_book_bundle(source)
+            book = load_book_workspace(source).book if source.is_dir() else load_book_bundle(source)
             original_chapter = next(
                 (chapter for chapter in book.chapters if chapter.id == section.id),
                 None,

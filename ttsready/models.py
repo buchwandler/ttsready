@@ -233,6 +233,13 @@ class ConversionReport:
     source_paragraphs: int
     sections: list[SectionStats] = field(default_factory=list)
 
+    workspace_type: str | None = None
+    workspace_status: str | None = None
+    dirty_chapters: list[str] = field(default_factory=list)
+    stored_sequence_fallback_mode: str | None = None
+    effective_sequence_fallback_mode: str | None = None
+    ssmd_semantics: dict[str, Any] = field(default_factory=dict)
+    preparation_trace: dict[str, Any] | None = None
     source_sha256: str | None = None
     tool_versions: dict[str, str] = field(default_factory=dict)
     content_fingerprint: str | None = None

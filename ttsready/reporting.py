@@ -53,6 +53,11 @@ def markdown_report(report: ConversionReport) -> str:
     tool_versions = ", ".join(
         f"{name} {value}" for name, value in sorted(report.tool_versions.items())
     )
+    portable_metadata = (
+        _cell(json.dumps(report.ssmd_semantics, ensure_ascii=False, sort_keys=True))
+        if report.ssmd_semantics
+        else "none"
+    )
     lines = [
         "# ttsready report",
         "",
@@ -67,7 +72,23 @@ def markdown_report(report: ConversionReport) -> str:
         f"- Metadata language: {report.metadata_language or 'not set'}",
         f"- Requested language: {report.requested_language or 'not specified'}",
         f"- Effective language: {report.effective_language}",
+        f"- Stored sequence fallback: {report.stored_sequence_fallback_mode or 'not specified'}",
+        f"- Effective sequence fallback: "
+        f"{report.effective_sequence_fallback_mode or 'unavailable'}",
         f"- Output layout: {report.output_layout}",
+        "",
+        "## Workspace",
+        "",
+        f"- Type: {report.workspace_type or 'standalone'}",
+        f"- Status: {report.workspace_status or 'not applicable'}",
+        f"- Dirty chapters: "
+        f"{', '.join(report.dirty_chapters) if report.dirty_chapters else 'none'}",
+        "",
+        "## SSMD semantics",
+        "",
+        "- Generic TXT output is intentionally lossy for SSMD-only voice, "
+        "pause, and prosody delivery semantics.",
+        f"- Portable metadata: {portable_metadata}",
         "",
         "## Reproducibility",
         "",
@@ -225,6 +246,10 @@ def format_stats(report: ConversionReport) -> str:
         f"Metadata language: {report.metadata_language or 'not set'}",
         f"Requested language: {report.requested_language or 'not specified'}",
         f"Effective language: {report.effective_language}",
+        f"Stored sequence fallback: {report.stored_sequence_fallback_mode or 'not specified'}",
+        f"Effective sequence fallback: {report.effective_sequence_fallback_mode or 'unavailable'}",
+        f"Workspace: {report.workspace_status or 'not applicable'}",
+        f"Dirty chapters: {len(report.dirty_chapters)}",
         f"Layout: {report.output_layout}",
         f"Sections: {report.selected_sections} / {report.total_sections}",
         f"Input characters: {report.input_chars}",

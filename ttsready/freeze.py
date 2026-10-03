@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
-from ssmdconvert import BookBundleError, load_book_bundle, write_book_bundle
+from ssmdconvert import BookBundleError, load_book_bundle, load_book_workspace, write_book_bundle
 
 from .errors import TTSReadyError
 from .input import load
@@ -91,7 +91,7 @@ def freeze_ssmd(
 
     if source.name.casefold().endswith((".ssmdbook", ".ssmdbook.zip")):
         try:
-            book = load_book_bundle(source)
+            book = load_book_workspace(source).book if source.is_dir() else load_book_bundle(source)
             chapters = tuple(
                 replace(chapter, ssmd=updated_by_section[chapter.id])
                 if chapter.id in updated_by_section

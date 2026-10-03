@@ -107,6 +107,50 @@ def _authoritative_annotation(annotation: AnnotationSpan) -> bool:
         or annotation.attrs.get("tag") in {"say-as", "phoneme"}
     )
 
+def _annotated_ssmd_text(text: str, annotations: tuple[AnnotationSpan, ...]) -> str:
+    rendered = text
+    for annotation in sorted(annotations, key=lambda item: item.char_start, reverse=True):
+        attrs = " ".join(
+            f'{key}="{str(value).replace(chr(34), chr(92) + chr(34))}"'
+            for key, value in annotation.attrs.items()
+        )
+        rendered = (
+            rendered[: annotation.char_start]
+            + f"[{text[annotation.char_start:annotation.char_end]}]{{{attrs}}}"
+            + rendered[annotation.char_end :]
+        )
+    return rendered
+
+def _restore_soft_line_breaks(
+    source: str,
+    output: str,
+    replacements: tuple[dict, ...],
+    matches: tuple,
+) -> str:
+    """Keep canonical soft line breaks in generic text while using plan offsets."""
+    edits = [
+        (
+            int(item.get("source_start", 0)),
+            int(item.get("source_end", 0)),
+            len(str(item.get("replacement", ""))),
+        )
+        for item in replacements
+    ]
+    edits.extend((match.start, match.end, len(match.override.spoken)) for match in matches)
+    rendered = output
+    for newline in reversed([index for index, char in enumerate(source) if char == "\n"]):
+        offset = sum(
+            new_length - (end - start)
+            for start, end, new_length in edits
+            if end <= newline
+        )
+        output_index = newline + offset
+        if output_index < len(rendered) and rendered[output_index] == " ":
+            rendered = rendered[:output_index] + "\n" + rendered[output_index + 1 :]
+    return rendered
+
+
+
 
 def _spoken(
     text: str,
@@ -138,10 +182,34 @@ def _spoken(
         if not any(match.start < end and start < match.end for start, end in protected_spans)
     )
 
-    if enabled:
-        from spokenform import prepare as prepare_spokenform
+    from utterplan import PlannerConfig, UtterancePlanner
 
-        prepared = prepare_spokenform(
+    # Utterplan is the single semantic preparation owner.  Compile a small SSMD
+    # document per source unit so chapter metadata (notably language and
+    # sequence_fallback_mode) is interpreted exactly as it is for Readio.
+    escaped_language = str(language).replace('"', "\\\"")
+    planner_annotations = authoritative + tuple(
+        AnnotationSpan(
+            char_start=match.start,
+            char_end=match.end,
+            attrs={"ph": text[match.start : match.end], "tag": "phoneme"},
+            kind="phoneme",
+        )
+        for match in matches
+    )
+    source = (
+        "---" + chr(10)
+        + 'ssmd_version: "0.9"' + chr(10)
+        + f'language: "{escaped_language}"' + chr(10)
+        + f'sequence_fallback_mode: {sequence_fallback_mode}' + chr(10)
+        + "---" + chr(10)
+        + _annotated_ssmd_text(text, planner_annotations) + chr(10)
+    )
+    protected_legacy = None
+    if authoritative:
+        from spokenform import prepare as legacy_prepare
+
+        protected_legacy = legacy_prepare(
             text,
             **asdict(
                 normalization_profile(
@@ -151,46 +219,163 @@ def _spoken(
             ),
             protected_spans=(*protected_spans, *((match.start, match.end) for match in matches)),
         )
-        stage_edit_counts: dict[str, int] = {}
-        for stage in prepared.stages:
-            stage_edit_counts[stage.name] = stage_edit_counts.get(stage.name, 0) + len(
-                stage.mapped_edits
-            )
-        replacements = tuple(prepared.source_replacements)
-        base_changes = tuple(
-            SpokenChange(
-                id=change_id(
-                    context_id,
-                    source_start=replacement.source_start,
-                    source_end=replacement.source_end,
-                    source=replacement.source,
-                ),
-                context_id=context_id,
-                section_id=section_id,
-                section_index=section_index,
-                source_paragraph=source_paragraph,
-                source=replacement.source,
-                replacement=replacement.replacement,
-                stages=tuple(replacement.stages),
-                kind=replacement.kind,
-                rule=replacement.rule,
-                recognition_domain=replacement.recognition_domain,
-                source_start=replacement.source_start,
-                source_end=replacement.source_end,
-                output_start=replacement.output_start,
-                output_end=replacement.output_end,
-            )
-            for replacement in replacements
+    planner = UtterancePlanner(
+        PlannerConfig(
+            language=language,
+            document_format="ssmd",
+            text_preparation=(
+                "identity"
+                if protected_legacy is not None
+                else ("spokenform" if enabled else "identity")
+            ),
+            diagnostics=True,
         )
-        warnings = tuple(prepared.warnings)
-        output_text = prepared.spoken_text
-    else:
-        replacements = ()
-        base_changes = ()
-        stage_edit_counts = {}
-        warnings = ()
-        output_text = text
+    )
+    compatibility_stage_counts: dict[str, int] = {}
+    try:
+        prepared_plan = planner.plan(source)
+        output_text = prepared_plan.texts.spoken
+        if protected_legacy is not None:
+            output_text = str(protected_legacy.spoken_text)
+        replacements_data = tuple(prepared_plan.preparation.replacements)
+        warnings = tuple(prepared_plan.warnings) + tuple(prepared_plan.preparation.warnings)
+        replacement_origin = "utterplan"
+        if protected_legacy is not None:
+            replacements_data = tuple(
+                {
+                    key: getattr(item, key)
+                    for key in (
+                        "source_start", "source_end", "output_start", "output_end",
+                        "source", "replacement", "kind", "rule", "language", "stages",
+                        "recognition_domain",
+                    )
+                    if hasattr(item, key)
+                }
+                for item in getattr(protected_legacy, "source_replacements", ())
+            )
+            warnings = tuple(getattr(protected_legacy, "warnings", ()))
+            replacement_origin = "utterplan-protected-compat"
+            compatibility_stage_counts = {
+                str(stage.name): len(stage.mapped_edits)
+                for stage in getattr(protected_legacy, "stages", ())
+            }
+    except Exception as exc:
+        # Keep a narrow compatibility path for older spokenform test doubles and
+        # providers that predate offset maps; production preparation remains
+        # owned by utterplan.
+        if "offset map" not in str(exc):
+            raise
+        from spokenform import prepare as legacy_prepare
 
+        legacy = legacy_prepare(
+            text,
+            **asdict(
+                normalization_profile(
+                    language,
+                    sequence_fallback_mode=sequence_fallback_mode,
+                )
+            ),
+            protected_spans=(*protected_spans, *((match.start, match.end) for match in matches)),
+        )
+        output_text = str(legacy.spoken_text)
+        replacements_data = tuple(
+            {
+                key: getattr(item, key)
+                for key in (
+                    "source_start", "source_end", "output_start", "output_end",
+                    "source", "replacement", "kind", "rule", "language", "stages",
+                    "recognition_domain",
+                )
+                if hasattr(item, key)
+            }
+            for item in getattr(legacy, "source_replacements", ())
+        )
+        warnings = tuple(getattr(legacy, "warnings", ()))
+        compatibility_stage_counts = {
+            str(stage.name): len(stage.mapped_edits)
+            for stage in getattr(legacy, "stages", ())
+        }
+        replacement_origin = "spokenform-compat"
+    stage_edit_counts: dict[str, int] = {}
+    base_changes: tuple[SpokenChange, ...] = tuple(
+        SpokenChange(
+            id=change_id(
+                context_id,
+                source_start=int(replacement.get("source_start", 0)),
+                source_end=int(replacement.get("source_end", 0)),
+                source=str(replacement.get("source", "")),
+            ),
+            context_id=context_id,
+            section_id=section_id,
+            section_index=section_index,
+            source_paragraph=source_paragraph,
+            source=str(replacement.get("source", "")),
+            replacement=str(replacement.get("replacement", "")),
+            stages=tuple(
+                replacement.get("stages", ())
+                or (
+                    {
+                        "abbreviation": "abbreviations",
+                        "number": "numbers",
+                        "date": "structured",
+                        "time": "structured",
+                        "fallback": "sequence_fallback",
+                    }.get(
+                        str(replacement.get("kind", "utterplan")),
+                        str(replacement.get("kind", "utterplan")),
+                    ),
+                )
+            ),
+            kind=str(replacement.get("kind", "normalization")),
+            rule=(str(replacement["rule"]) if replacement.get("rule") is not None else None),
+            recognition_domain=(
+                str(replacement["recognition_domain"])
+                if replacement.get("recognition_domain") is not None
+                else None
+            ),
+            source_start=int(replacement.get("source_start", 0)),
+            source_end=int(replacement.get("source_end", 0)),
+            output_start=int(replacement.get("output_start", 0)),
+            output_end=int(replacement.get("output_end", 0)),
+            provenance={"origin": replacement_origin, "language": replacement.get("language")},
+        )
+        for replacement in replacements_data
+    )
+    for change in base_changes:
+        for stage in change.stages:
+            stage_edit_counts[stage] = stage_edit_counts.get(stage, 0) + 1
+    for stage, count in compatibility_stage_counts.items():
+        stage_edit_counts.setdefault(stage, count)
+    replacements = replacements_data
+    # SSMD say-as/phoneme annotations are authoritative: preserve their
+    # source surface even when utterplan's generic normalization would alter it.
+    for annotation in sorted(authoritative, key=lambda item: item.char_start, reverse=True):
+        if "sub" in annotation.attrs:
+            continue
+        output_start = annotation.char_start + sum(
+            len(str(item.get("replacement", ""))) - len(str(item.get("source", "")))
+            for item in replacements
+            if int(item.get("source_end", 0)) <= annotation.char_start
+        )
+        semantic_replacement = next(
+            (
+                item
+                for item in replacements
+                if int(item.get("source_start", -1)) == annotation.char_start
+                and int(item.get("source_end", -1)) == annotation.char_end
+            ),
+            None,
+        )
+        output_end = output_start + (
+            len(str(semantic_replacement.get("replacement", "")))
+            if semantic_replacement is not None
+            else annotation.char_end - annotation.char_start
+        )
+        output_text = (
+            output_text[:output_start]
+            + text[annotation.char_start : annotation.char_end]
+            + output_text[output_end:]
+        )
     authoritative_replacements = tuple(
         _SSMDReplacement(
             source_start=item.char_start,
@@ -205,9 +390,9 @@ def _spoken(
     mapped_substitutions: list[tuple[_SSMDReplacement, int]] = []
     for substitution in authoritative_replacements:
         apply_output_start = substitution.source_start + sum(
-            len(item.replacement) - len(item.source)
+            len(str(item.get("replacement", ""))) - len(str(item.get("source", "")))
             for item in replacements
-            if item.source_end <= substitution.source_start
+            if int(item.get("source_end", 0)) <= substitution.source_start
         )
         output_start = apply_output_start + sum(
             len(item.replacement) - len(item.source)
@@ -241,9 +426,36 @@ def _spoken(
             )
         )
     for substitution, output_start in reversed(mapped_substitutions):
-        output_end = output_start + len(substitution.source)
+        semantic_replacement = next(
+            (
+                item
+                for item in replacements
+                if int(item.get("source_start", -1)) == substitution.source_start
+                and int(item.get("source_end", -1)) == substitution.source_end
+            ),
+            None,
+        )
+        output_end = output_start + (
+            len(str(semantic_replacement.get("replacement", "")))
+            if semantic_replacement is not None
+            else len(substitution.source)
+        )
+        if output_text[output_start:output_end] == substitution.replacement:
+            continue
         output_text = (
-            output_text[:output_start] + substitution.replacement + output_text[output_end:]
+            output_text[:output_start]
+            + substitution.replacement
+            + output_text[output_end:]
+        )
+    if authoritative_replacements:
+        base_changes = tuple(
+            change
+            for change in base_changes
+            if not any(
+                change.source_start < item.source_end
+                and item.source_start < change.source_end
+                for item in authoritative_replacements
+            )
         )
     base_changes = (*base_changes, *authoritative_changes)
     if authoritative_changes:
@@ -298,6 +510,7 @@ def _spoken(
             for change in base_changes
         )
 
+    spoken_text = _restore_soft_line_breaks(text, spoken_text, replacements, matches)
     return SpokenOutcome(
         text=spoken_text,
         warnings=warnings,
@@ -541,6 +754,34 @@ def _iter_section_inputs(document: Document, include_titles: bool) -> Iterable[S
                 tuple(local_voice_spans),
             )
 
+def _language_key(value: object) -> str:
+    return str(value).strip().casefold().replace("_", "-")
+
+
+def _section_language(section: Section, fallback: str) -> str:
+    if section.structure is None:
+        return fallback
+    declared = section.structure.header.get("language")
+    return str(declared) if declared else fallback
+
+
+def _resolve_effective_language(document: Document, requested: str | None) -> str:
+    declared = document.metadata.get("language")
+    if (
+        document.source.format in {"ssmd", "ssmdbook"}
+        and declared is not None
+        and requested is not None
+        and _language_key(declared) != _language_key(requested)
+    ):
+        raise TTSReadyError(
+            "normalization_profile.language conflicts with declared document language: "
+            f"metadata={declared!r}, requested={requested!r}"
+        )
+    if document.source.format in {"ssmd", "ssmdbook"}:
+        return str(declared or requested or "en")
+    return str(requested or declared or "en")
+
+
 
 def prepare_tts_plan(
     document: Document,
@@ -556,9 +797,22 @@ def prepare_tts_plan(
         raise ValueError("max_paragraph_chars must be at least 1")
 
     metadata_language = document.metadata.get("language")
-    selected_language = str(language or metadata_language or "en")
+    selected_language = _resolve_effective_language(document, language)
     requested_language = str(language) if language is not None else None
-    selected_fallback_mode = _document_sequence_fallback_mode(document)
+    selected_fallback_mode = (
+        _document_sequence_fallback_mode(document)
+        if document.metadata.get("_sequence_fallback_mode_stored", True)
+        else normalization_profile(selected_language).sequence_fallback_mode
+    )
+    workspace_metadata = document.metadata.get("workspace")
+    workspace_metadata = workspace_metadata if isinstance(workspace_metadata, dict) else {}
+    portable_keys = (
+        "voice_bindings", "voice_defaults", "pause_defaults", "prosody_transitions",
+        "language_detection", "requires",
+    )
+    ssmd_semantics = {
+        key: document.metadata[key] for key in portable_keys if key in document.metadata
+    }
     profile_options = asdict(
         normalization_profile(
             selected_language,
@@ -594,6 +848,24 @@ def prepare_tts_plan(
         input_chars=sum(len(section.text) for section in document.sections),
         source_paragraphs=sum(item.source_paragraphs for item in section_stats),
         sections=section_stats,
+        workspace_type=workspace_metadata.get("type"),
+        workspace_status=workspace_metadata.get("status"),
+        dirty_chapters=list(workspace_metadata.get("dirty_chapters", ())),
+        stored_sequence_fallback_mode=(
+            str(document.metadata["sequence_fallback_mode"])
+            if (
+                document.metadata.get("_sequence_fallback_mode_stored", True)
+                and "sequence_fallback_mode" in document.metadata
+            )
+            else None
+        ),
+        effective_sequence_fallback_mode=selected_fallback_mode,
+        ssmd_semantics=ssmd_semantics,
+        preparation_trace={
+            "effective_language": selected_language,
+            "sequence_fallback_mode": selected_fallback_mode,
+            "units": "paragraph",
+        },
         source_sha256=document.source_sha256 or file_sha256(str(document.source.path)),
         content_fingerprint=document.content_fingerprint,
         normalization_profile=profile_options,
@@ -614,6 +886,18 @@ def prepare_tts_plan(
         source_index = source_item.source_paragraph
         is_title = source_item.is_title
         raw = source_item.text
+        item_language = source_item.language or _section_language(section, selected_language)
+        if (
+            language is not None
+            and section.structure is not None
+            and section.structure.header.get("language") is not None
+            and _language_key(section.structure.header["language"]) != _language_key(language)
+        ):
+            raise TTSReadyError(
+                "CLI language conflicts with declared chapter language: "
+                f"chapter={section.id!r}, metadata={section.structure.header['language']!r}, "
+                f"requested={language!r}"
+            )
         locator = section_locator(section)
         kind = "title" if is_title else "paragraph"
         source_digest = text_sha256(raw)
@@ -629,7 +913,7 @@ def prepare_tts_plan(
         outcome = _spoken(
             raw,
             context_id=context_key,
-            language=source_item.language or selected_language,
+            language=item_language,
             sequence_fallback_mode=selected_fallback_mode,
             enabled=apply_spokenform,
             section_id=section_id,
@@ -653,13 +937,13 @@ def prepare_tts_plan(
                     context_key,
                     raw,
                     kind="source",
-                    language=source_item.language or selected_language,
+                    language=item_language,
                 ),
                 spoken_sentences=_sentence_contexts(
                     context_key,
                     outcome.text,
                     kind="spoken",
-                    language=source_item.language or selected_language,
+                    language=item_language,
                 ),
             )
         )
@@ -698,7 +982,7 @@ def prepare_tts_plan(
         parts = _split_oversized(
             outcome.text,
             max_chars=max_paragraph_chars,
-            language=source_item.language or selected_language,
+            language=item_language,
         )
         if len(parts) > 1:
             report.split_source_items += 1
@@ -728,7 +1012,7 @@ def prepare_tts_plan(
                         source_paragraph=source_index,
                         part=part_index,
                         is_title=is_title,
-                        language=source_item.language or selected_language,
+                        language=item_language,
                         voice=voice,
                         source_context_id=context_key,
                         render_group=render_group,

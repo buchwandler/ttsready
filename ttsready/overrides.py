@@ -116,6 +116,10 @@ def find_overrides(
     return tuple(sorted(selected, key=lambda item: item.start))
 
 
+def _replacement_field(item: Any, name: str) -> Any:
+    return item.get(name) if isinstance(item, dict) else getattr(item, name)
+
+
 def apply_overrides(
     text: str,
     matches: tuple[OverrideMatch, ...],
@@ -129,9 +133,10 @@ def apply_overrides(
     custom_delta = 0
     for match in matches:
         spokenform_delta = sum(
-            len(replacement.replacement) - len(replacement.source)
+            len(_replacement_field(replacement, "replacement"))
+            - len(_replacement_field(replacement, "source"))
             for replacement in source_replacements
-            if replacement.source_end <= match.start
+            if _replacement_field(replacement, "source_end") <= match.start
         )
         output_start = match.start + spokenform_delta + custom_delta
         output_end = output_start + len(match.override.spoken)

@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 import ssmd as ssmd_library
-from ssmdconvert import Book, BookChapter, load_book_bundle
+from ssmdconvert import Book, BookChapter, load_book_bundle, load_book_workspace
 
 from .errors import TTSReadyError, UnsupportedInputError
 from .models import (
@@ -120,6 +120,7 @@ def load_ssmd(
                 structure.header,
                 label=f"SSMD document {label}",
             ),
+            "_sequence_fallback_mode_stored": "sequence_fallback_mode" in structure.header,
         },
         source_sha256=digest,
         content_fingerprint=_content_fingerprint("ssmd", [(section.id, digest)]),
@@ -173,9 +174,14 @@ def _resolve_book_sequence_fallback_mode(metadata: dict, sections: list[Section]
     return first_mode
 
 
-def _load_book(path: Path) -> Document:
+def _load_book(path: Path, *, workspace: bool = False) -> Document:
     try:
-        book: Book = load_book_bundle(path)
+        loaded_workspace = load_book_workspace(path) if workspace else None
+        book: Book = (
+            loaded_workspace.book
+            if loaded_workspace is not None
+            else load_book_bundle(path)
+        )
     except Exception as exc:
         raise TTSReadyError(f"Could not load SSMD book {path}: {exc}") from exc
 
@@ -194,10 +200,20 @@ def _load_book(path: Path) -> Document:
         chapter_hashes.append((chapter.id, section.chapter_sha256 or ""))
 
     metadata = dict(book.metadata)
-    metadata["sequence_fallback_mode"] = _resolve_book_sequence_fallback_mode(
-        book.metadata,
-        sections,
+    book_sequence_mode = _resolve_book_sequence_fallback_mode(book.metadata, sections)
+    metadata["sequence_fallback_mode"] = book_sequence_mode
+    metadata["_sequence_fallback_mode_stored"] = "sequence_fallback_mode" in book.metadata or any(
+        section.structure is not None and "sequence_fallback_mode" in section.structure.header
+        for section in sections
     )
+    if loaded_workspace is not None:
+        dirty_chapters = [item.id for item in loaded_workspace.chapters if item.dirty]
+        metadata["workspace"] = {
+            "type": "directory",
+            "status": "dirty" if loaded_workspace.dirty else "clean",
+            "dirty": loaded_workspace.dirty,
+            "dirty_chapters": dirty_chapters,
+        }
     return Document(
         source=SourceInfo(path, "ssmdbook", "application/vnd.ssmd.book"),
         sections=sections,
@@ -215,16 +231,17 @@ def load(source: str | Path) -> Document:
         raise FileNotFoundError(path)
 
     if path.is_dir() and path.name.casefold().endswith(".ssmdbook"):
-        return _load_book(path)
+        return _load_book(path, workspace=True)
     if path.is_file() and path.name.casefold().endswith(".ssmdbook.zip"):
-        return _load_book(path)
+        return _load_book(path, workspace=False)
     if path.is_file() and (
         path.name.casefold().endswith(".ssmd.md") or path.suffix.casefold() == ".ssmd"
     ):
         return _load_standalone(path)
 
     raise UnsupportedInputError(
-        "ttsready accepts standalone .ssmd/.ssmd.md files and .ssmdbook/.ssmdbook.zip bundles"
+        "Convert the source with ssmdconvert first; ttsready accepts "
+        "standalone .ssmd/.ssmd.md files and .ssmdbook/.ssmdbook.zip bundles"
     )
 
 

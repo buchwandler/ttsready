@@ -144,7 +144,11 @@ SpeakerIdOption = Annotated[
 ]
 LanguageOption = Annotated[
     str | None,
-    typer.Option("-l", "--language", help="Spokenform language; metadata then en if omitted."),
+    typer.Option(
+        "-l",
+        "--language",
+        help="Semantic fallback; declared SSMD language remains authoritative, then en.",
+    ),
 ]
 MaxParagraphCharsOption = Annotated[
     int,
@@ -267,11 +271,20 @@ def _prepare_for_output(
     document = _load_selected_document(source, chapters)
     sidecar = _load_sidecar_for_document(config, document)
     render_options = RenderOptions(line_width=line_width, paragraph_breaks=paragraph_breaks)
+    effective_layout = layout
+    if (
+        layout is Layout.single
+        and source.name.casefold().endswith((".ssmdbook", ".ssmdbook.zip"))
+        and output is not None
+        and output.exists()
+        and output.is_dir()
+    ):
+        effective_layout = Layout.chapters
     try:
         plan = plan_output(
             document,
             output=output,
-            layout=layout.value,
+            layout=effective_layout.value,
         )
     except (TTSReadyError, OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc), param_hint="--output") from exc
@@ -432,7 +445,7 @@ def convert(
 @app.command("export")
 def export_command(
     source: SourceArgument,
-    format_: ExportFormatOption,
+    format_: ExportFormatOption = ExportFormat.txt,
     output: OutputOption = None,
     layout: LayoutOption = Layout.single,
     chapters: ChaptersOption = None,
@@ -469,6 +482,10 @@ def export_command(
         else prepared.plan.artifacts[0].path
     )
     typer.echo(f"TXT exported: {destination}")
+
+
+# `txt` is the stateless generic-text spelling; keep `export` as a compatibility alias.
+app.command("txt")(export_command)
 
 
 @app.command("preview")
