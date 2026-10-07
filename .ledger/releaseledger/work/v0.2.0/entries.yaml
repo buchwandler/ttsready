@@ -1,0 +1,56 @@
+schema: releaseledger.entry-batch.v1
+operation: create
+schema_version: 1
+object_type: release_entry_batch
+release_version: v0.2.0
+git_base_ref: b014b147199003bbe474c4c8e3067e5f26917168
+git_base_sha: b014b147199003bbe474c4c8e3067e5f26917168
+git_head_ref: 9c0f36003fe8ac460a928a45342875a15e0adc7f
+git_head_sha: 9c0f36003fe8ac460a928a45342875a15e0adc7f
+include_merges: nontrivial
+entries:
+  - kind: changed
+    summary: "Changed ttsready to a source-neutral, in-memory preparation API for caller-owned text units"
+    status: accepted
+    breaking: true
+    source_refs:
+      - git:9c0f36003fe8ac460a928a45342875a15e0adc7f
+    paths:
+      - ttsready/__init__.py
+      - ttsready/preparation.py
+      - ttsready/models.py
+      - pyproject.toml
+    sources:
+      - git:9c0f36003fe8ac460a928a45342875a15e0adc7f
+  - kind: added
+    summary: "Added public preparation, residual QA, reproducibility fingerprint, and JSON serialization APIs"
+    status: accepted
+    paths:
+      - ttsready/preparation.py
+      - ttsready/qa.py
+      - ttsready/reproducibility.py
+      - ttsready/serialization.py
+    sources:
+      - git:9c0f36003fe8ac460a928a45342875a15e0adc7f
+  - kind: removed
+    summary: "Removed the 0.1 SSMD and document workflows, CLI, caches, speaker tooling, and file-based state"
+    status: accepted
+    breaking: true
+    paths:
+      - ttsready/cli.py
+      - ttsready/input.py
+      - ttsready/pipeline.py
+      - ttsready/speakers
+    sources:
+      - git:9c0f36003fe8ac460a928a45342875a15e0adc7f
+  - kind: docs
+    summary: "Documented the migration, ownership boundary, Python API, packaging, and QA guidance for the 0.2 library boundary"
+    status: accepted
+    paths:
+      - docs/migration.md
+      - docs/ownership-boundary.md
+      - docs/python-api.md
+      - docs/qa.md
+      - README.md
+    sources:
+      - git:9c0f36003fe8ac460a928a45342875a15e0adc7f
