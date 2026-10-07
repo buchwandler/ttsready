@@ -31,6 +31,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "build>=1,<2",
+  "setuptools>=80",
   "pytest>=8,<10",
   "ruff>=0.16,<1",
   "twine>=6,<7",
