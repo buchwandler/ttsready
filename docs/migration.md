@@ -43,6 +43,6 @@ Replace document annotations with caller-owned `SpeechOverride` values. Use glob
 
 ## Dependency and packaging changes
 
-The 0.2 runtime dependencies are `spokenform>=0.4.6,<1` and `phrasplit>=0.3.9,<1`. SSMD/SSMDConvert, CLI, PyYAML, Utterplan, and PyJEV are no longer runtime dependencies. The CLI and speaker extras were removed; `ttsready[lexical]` remains optional.
+The 0.2 runtime dependencies are `spokenform>=0.4.5,<1` and `phrasplit>=0.3.9,<1`. SSMD/SSMDConvert, CLI, PyYAML, Utterplan, and PyJEV are no longer runtime dependencies. The CLI and speaker extras were removed; `ttsready[lexical]` remains optional.
 
 Update imports to the source-neutral exports in `ttsready.__all__`, and pin the new major API boundary before upgrading. See [Python API](python-api.md), [ownership boundary](ownership-boundary.md), and [reproducibility](reproducibility.md).

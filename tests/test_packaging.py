@@ -17,7 +17,7 @@ def test_runtime_metadata_has_no_removed_dependencies_or_console_script():
 
     for removed in ("ssmd", "ssmdconvert", "utterplan", "pyyaml", "typer", "pyjev"):
         assert not re.search(rf"[\"']{removed}(?:[<>=!~]|[\"'])", runtime_dependencies)
-    assert '"spokenform>=0.4.6,<1"' in runtime_dependencies
+    assert '"spokenform>=0.4.5,<1"' in runtime_dependencies
     assert '"phrasplit>=0.3.9,<1"' in runtime_dependencies
     assert "[project.scripts]" not in pyproject
     assert '"lexhint>=' in pyproject
@@ -71,7 +71,7 @@ def test_built_wheel_contains_typed_marker_and_imports_without_console_script(tm
         assert metadata["Version"] == "0.2.0"
 
         requirements = metadata.get_all("Requires-Dist") or []
-        assert any("spokenform" in item.lower() and ">=0.4.6" in item for item in requirements)
+        assert any("spokenform" in item.lower() and ">=0.4.5" in item for item in requirements)
         assert any("phrasplit" in item.lower() and ">=0.3.9" in item for item in requirements)
         assert "lexical" in (metadata.get_all("Provides-Extra") or [])
     environment = os.environ.copy()

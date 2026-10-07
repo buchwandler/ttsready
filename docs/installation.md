@@ -6,7 +6,7 @@
 python -m pip install ttsready
 ```
 
-The library's runtime dependencies are `spokenform>=0.4.6,<1` and `phrasplit>=0.3.9,<1`. The package does not install format parsers, file readers, a CLI framework, or an audio renderer.
+The library's runtime dependencies are `spokenform>=0.4.5,<1` and `phrasplit>=0.3.9,<1`. The package does not install format parsers, file readers, a CLI framework, or an audio renderer.
 
 Install the optional `lexical` extra when using integrations that need the `lexhint` lexical-evidence package:
 

@@ -24,7 +24,7 @@ classifiers = [
   "Topic :: Text Processing :: General",
 ]
 dependencies = [
-  "spokenform>=0.4.6,<1",
+  "spokenform>=0.4.5,<1",
   "phrasplit>=0.3.9,<1",
 ]
 

@@ -12,7 +12,7 @@ Python 3.10 or newer is required.
 python -m pip install ttsready
 ```
 
-The runtime dependencies are `spokenform>=0.4.6,<1` and `phrasplit>=0.3.9,<1`. Install the optional lexical extra when you need its lexical-evidence integrations:
+The runtime dependencies are `spokenform>=0.4.5,<1` and `phrasplit>=0.3.9,<1`. Install the optional lexical extra when you need its lexical-evidence integrations:
 
 ```bash
 python -m pip install 'ttsready[lexical]'
