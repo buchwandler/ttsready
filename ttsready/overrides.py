@@ -1,16 +1,13 @@
-"""Find and apply literal, source-anchored speech overrides."""
+"""Source-neutral matching and conflict resolution for speech overrides."""
 
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any
 
-from .sidecar import SpeechOverride
-
-
-class OverrideConflictError(ValueError):
-    """Raised when equal-priority overrides disagree over an overlapping source span."""
+from .errors import InvalidUnitError, OverrideConflictError
+from .models import PreparationIssue, SpeechOverride, TextUnit
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,133 +15,108 @@ class OverrideMatch:
     start: int
     end: int
     override: SpeechOverride
-    scope_priority: int
-    order: int
-
-    @property
-    def priority(self) -> tuple[int, int]:
-        return self.scope_priority, self.end - self.start
+    priority: int
 
 
-@dataclass(frozen=True, slots=True)
-class AppliedOverride:
-    match: OverrideMatch
-    output_start: int
-    output_end: int
+def overlaps(left: tuple[int, int], right: tuple[int, int]) -> bool:
+    """Return whether two half-open source spans overlap."""
+    return left[0] < right[1] and right[0] < left[1]
 
 
-def _scope_priority(
-    override: SpeechOverride,
-    *,
-    context_id: str,
-    section_id: str,
-    section_locator: str,
-) -> int | None:
-    scope = override.scope
-    scope_type = scope.get("type", "document")
-    if scope_type == "document":
-        return 1
-    if scope_type == "section":
-        if scope.get("section_id") == section_id or scope.get("section_locator") == section_locator:
-            return 2
-        return None
-    if scope.get("context_id") != context_id:
-        return None
-    return 3
-
-
-def _matches(text: str, override: SpeechOverride) -> list[tuple[int, int]]:
-    escaped = re.escape(override.surface)
+def _matches(text: str, override: SpeechOverride) -> tuple[tuple[int, int], ...]:
+    expression = re.escape(override.surface)
     if override.match == "word":
-        escaped = rf"(?<![\w'-]){escaped}(?![\w'-])"
+        expression = rf"(?<![\w'-]){expression}(?![\w'-])"
     flags = 0 if override.case_sensitive else re.IGNORECASE
-    return [(match.start(), match.end()) for match in re.finditer(escaped, text, flags)]
+    return tuple((item.start(), item.end()) for item in re.finditer(expression, text, flags))
 
 
-def find_overrides(
-    text: str,
-    overrides: tuple[SpeechOverride, ...],
-    *,
-    context_id: str,
-    section_id: str,
-    section_locator: str,
-) -> tuple[OverrideMatch, ...]:
-    candidates: list[OverrideMatch] = []
+def resolve_overrides(
+    unit: TextUnit,
+    overrides: Iterable[SpeechOverride],
+) -> tuple[tuple[OverrideMatch, ...], tuple[PreparationIssue, ...]]:
+    """Resolve occurrence, unit, and global overrides against one exact source unit."""
+    candidates: list[tuple[int, int, SpeechOverride, int, int]] = []
     for order, override in enumerate(overrides):
-        priority = _scope_priority(
-            override,
-            context_id=context_id,
-            section_id=section_id,
-            section_locator=section_locator,
-        )
-        if priority is None:
-            continue
         scope = override.scope
-        for start, end in _matches(text, override):
-            if scope.get("type") == "occurrence":
-                if scope.get("source_start") is not None and (
-                    scope["source_start"] != start or scope["source_end"] != end
-                ):
-                    continue
-            candidates.append(OverrideMatch(start, end, override, priority, order))
-
-    candidates.sort(
-        key=lambda item: (
-            -item.scope_priority,
-            -(item.end - item.start),
-            item.order,
-            item.start,
-        )
-    )
-    selected: list[OverrideMatch] = []
-    for candidate in candidates:
-        overlaps = [
-            item for item in selected if item.start < candidate.end and candidate.start < item.end
-        ]
-        if not overlaps:
-            selected.append(candidate)
+        if scope.kind == "all":
+            priority = 1
+            occurrences = _matches(unit.text, override)
+        elif scope.unit_id != unit.id:
             continue
-        for previous in overlaps:
-            if (
-                previous.priority == candidate.priority
-                and previous.override.spoken != candidate.override.spoken
-            ):
-                raise OverrideConflictError(
-                    f"Conflicting sidecar overrides overlap {candidate.start}:{candidate.end}: "
-                    f"{previous.override.id} and {candidate.override.id}"
+        elif scope.kind == "unit":
+            priority = 2
+            occurrences = _matches(unit.text, override)
+        else:
+            priority = 3
+            start = scope.source_start
+            end = scope.source_end
+            assert start is not None and end is not None
+            if end > len(unit.text) or unit.text[start:end] != override.surface:
+                raise InvalidUnitError(
+                    f"occurrence override {override.id!r} must exactly match its source surface"
                 )
-    return tuple(sorted(selected, key=lambda item: item.start))
+            occurrences = ((start, end),)
+            if override.match == "word" and (start, end) not in _matches(unit.text, override):
+                raise InvalidUnitError(
+                    f"occurrence override {override.id!r} does not match its word boundary"
+                )
+        candidates.extend((start, end, override, priority, order) for start, end in occurrences)
+
+    candidates.sort(key=lambda item: (-item[3], -(item[1] - item[0]), item[4], item[0]))
+    selected: list[OverrideMatch] = []
+    issues: list[PreparationIssue] = []
+    for start, end, override, priority, _order in candidates:
+        source_span = (start, end)
+        if any(overlaps(source_span, (span.start, span.end)) for span in unit.protected_spans):
+            issues.append(
+                PreparationIssue(
+                    code="override.protected_overlap",
+                    severity="warning",
+                    unit_id=unit.id,
+                    source_start=start,
+                    source_end=end,
+                    text=unit.text[start:end],
+                    message=f"Override {override.id} skipped because the source span is protected.",
+                    provenance={"override_id": str(override.id)},
+                )
+            )
+            continue
+        conflicts = [item for item in selected if overlaps(source_span, (item.start, item.end))]
+        if not conflicts:
+            selected.append(OverrideMatch(start, end, override, priority))
+            continue
+        for previous in conflicts:
+            if previous.priority == priority and previous.override.spoken != override.spoken:
+                raise OverrideConflictError(
+                    f"Equal-priority overrides {previous.override.id} and {override.id} overlap "
+                    f"at {start}:{end} with different replacements"
+                )
+        blockers = [item for item in conflicts if item.priority >= priority]
+        if blockers:
+            issues.append(
+                PreparationIssue(
+                    code="override.lower_priority_overlap",
+                    severity="warning",
+                    unit_id=unit.id,
+                    source_start=start,
+                    source_end=end,
+                    text=unit.text[start:end],
+                    message=(
+                        f"Override {override.id} skipped because a "
+                        "higher-priority override applies."
+                    ),
+                    provenance={
+                        "override_id": str(override.id),
+                        "blocking_override_ids": [str(item.override.id) for item in blockers],
+                    },
+                )
+            )
+            continue
+        selected.append(OverrideMatch(start, end, override, priority))
+
+    selected.sort(key=lambda item: (item.start, item.end))
+    return tuple(selected), tuple(issues)
 
 
-def _replacement_field(item: Any, name: str) -> Any:
-    return item.get(name) if isinstance(item, dict) else getattr(item, name)
-
-
-def apply_overrides(
-    text: str,
-    matches: tuple[OverrideMatch, ...],
-    source_replacements: tuple[Any, ...],
-) -> tuple[str, tuple[AppliedOverride, ...]]:
-    if not matches:
-        return text, ()
-
-    output = text
-    applied: list[AppliedOverride] = []
-    custom_delta = 0
-    for match in matches:
-        spokenform_delta = sum(
-            len(_replacement_field(replacement, "replacement"))
-            - len(_replacement_field(replacement, "source"))
-            for replacement in source_replacements
-            if _replacement_field(replacement, "source_end") <= match.start
-        )
-        output_start = match.start + spokenform_delta + custom_delta
-        output_end = output_start + len(match.override.spoken)
-        applied.append(AppliedOverride(match, output_start, output_end))
-        custom_delta += len(match.override.spoken) - (match.end - match.start)
-
-    for item in reversed(applied):
-        start = item.output_start
-        end = start + (item.match.end - item.match.start)
-        output = output[:start] + item.match.override.spoken + output[end:]
-    return output, tuple(applied)
+__all__ = ["OverrideMatch", "overlaps", "resolve_overrides"]

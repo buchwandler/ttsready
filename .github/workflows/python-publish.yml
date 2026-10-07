@@ -67,8 +67,7 @@ jobs:
           "$RUNNER_TEMP/ttsready-release-smoke/bin/python" -m pip install "$GITHUB_WORKSPACE"/dist/*.whl
           cd "$RUNNER_TEMP"
           "$RUNNER_TEMP/ttsready-release-smoke/bin/python" -c "import ttsready; print(ttsready.__version__)"
-          "$RUNNER_TEMP/ttsready-release-smoke/bin/ttsready" --version
-          "$RUNNER_TEMP/ttsready-release-smoke/bin/ttsready" --help
+          "$RUNNER_TEMP/ttsready-release-smoke/bin/python" -c "import sys, ttsready; assert ttsready.__version__ == '0.2.0'; assert not {'ssmd', 'ssmdconvert', 'utterplan', 'typer'} & set(sys.modules)"
           "$RUNNER_TEMP/ttsready-release-smoke/bin/python" -c "from importlib.resources import files; assert files('ttsready').joinpath('py.typed').is_file()"
 
       - name: Upload verified distributions

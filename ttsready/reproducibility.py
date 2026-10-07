@@ -1,246 +1,121 @@
-"""Deterministic profile fingerprints and strict ttsready lock files."""
+"""Pure canonical fingerprints for source-neutral preparation inputs and outputs."""
 
 from __future__ import annotations
 
-import hashlib
-import json
-import os
-import tempfile
-from pathlib import Path
+from collections.abc import Iterable, Mapping
+from dataclasses import fields, is_dataclass
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as distribution_version
 from typing import Any
 
-from .models import SEQUENCE_FALLBACK_MODES, ConversionReport, Document
-from .sidecar import Sidecar
-
-LOCK_SCHEMA = "ttsready.lock.v1"
-_LOCK_FIELDS = {
-    "schema",
-    "ssmd_content_fingerprint",
-    "chapters",
-    "runtime",
-    "runtime_fingerprint",
-    "normalization_profile",
-    "prepared_output_sha256",
-}
-
-
-class ReproducibilityError(ValueError):
-    """Raised for malformed or incompatible reproducibility locks."""
-
-
-def _canonical_json(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-
-
-def _sha256(value: bytes) -> str:
-    return hashlib.sha256(value).hexdigest()
-
-
-def _is_sha256(value: Any) -> bool:
-    return (
-        isinstance(value, str)
-        and len(value) == 64
-        and all(character in "0123456789abcdef" for character in value)
-    )
+from .identifiers import canonical_json, text_sha256
+from .models import PreparationProfile, PreparedUnit, SpeechOverride, TextUnit
 
 
 def _fingerprint(value: Any) -> str:
-    return _sha256(_canonical_json(value).encode("utf-8"))
+    import hashlib
+
+    return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
 
 
-def normalization_fingerprints(
-    language: str,
-    options: dict[str, Any],
-    sidecar: Sidecar | None,
-) -> dict[str, str]:
-    """Fingerprint Spokenform options and pronunciation overrides independently."""
-    pronunciation_profile = (
-        [
+def runtime_versions() -> dict[str, str]:
+    """Return only ttsready's semantic runtime versions."""
+    try:
+        from ._version import version as ttsready_version
+    except (ImportError, AttributeError):  # pragma: no cover - source-tree fallback
+        ttsready_version = "0.2.0"
+    versions = {"ttsready": str(ttsready_version)}
+    for package in ("spokenform", "phrasplit"):
+        try:
+            versions[package] = distribution_version(package)
+        except PackageNotFoundError:
+            versions[package] = "unknown"
+    return versions
+
+
+def profile_fingerprint(profile: PreparationProfile | Mapping[str, Any]) -> str:
+    """Fingerprint transformation policy independently from unit language."""
+    if is_dataclass(profile):
+        payload = {item.name: getattr(profile, item.name) for item in fields(profile)}
+    elif isinstance(profile, Mapping):
+        payload = dict(profile)
+    else:
+        raise TypeError("profile must be a PreparationProfile or mapping")
+    return _fingerprint(payload)
+
+
+def override_fingerprint(overrides: Iterable[SpeechOverride]) -> str:
+    """Fingerprint ordered override policy, including scope and match behavior."""
+    payload = []
+    for override in overrides:
+        scope = override.scope
+        payload.append(
             {
-                "surface": item.surface,
-                "spoken": item.spoken,
-                "match": item.match,
-                "case_sensitive": item.case_sensitive,
-                "kind": item.kind,
-                "scope": item.scope,
+                "surface": override.surface,
+                "spoken": override.spoken,
+                "match": override.match,
+                "case_sensitive": override.case_sensitive,
+                "scope": {
+                    "kind": scope.kind,
+                    "unit_id": scope.unit_id,
+                    "source_start": scope.source_start,
+                    "source_end": scope.source_end,
+                },
             }
-            for item in sidecar.lexicon
-        ]
-        if sidecar
-        else []
-    )
-    options_sha256 = _fingerprint(options)
-    pronunciation_sha256 = _fingerprint(pronunciation_profile)
-    profile_sha256 = _fingerprint(
-        {
-            "language": language,
-            "options_sha256": options_sha256,
-            "pronunciation_profile_sha256": pronunciation_sha256,
-        }
-    )
-    return {
-        "options_sha256": options_sha256,
-        "pronunciation_profile_sha256": pronunciation_sha256,
-        "profile_sha256": profile_sha256,
-    }
-
-
-def runtime_fingerprint(tool_versions: dict[str, str]) -> str:
-    return _fingerprint(tool_versions)
-
-
-def create_lock_record(
-    document: Document,
-    report: ConversionReport,
-    prepared_output: str,
-    *,
-    sidecar: Sidecar | None = None,
-) -> dict[str, Any]:
-    if document.content_fingerprint is None:
-        raise ReproducibilityError("Canonical SSMD input has no content fingerprint")
-    profile_hashes = normalization_fingerprints(
-        report.effective_language,
-        report.normalization_profile,
-        sidecar,
-    )
-    return {
-        "schema": LOCK_SCHEMA,
-        "ssmd_content_fingerprint": document.content_fingerprint,
-        "chapters": {
-            section.id: {"sha256": section.chapter_sha256} for section in document.sections
-        },
-        "runtime": dict(report.tool_versions),
-        "runtime_fingerprint": runtime_fingerprint(report.tool_versions),
-        "normalization_profile": {
-            "language": report.effective_language,
-            "sequence_fallback_mode": report.normalization_profile["sequence_fallback_mode"],
-            **profile_hashes,
-        },
-        "prepared_output_sha256": _sha256(prepared_output.encode("utf-8")),
-    }
-
-
-def write_lock(path: str | Path, lock: dict[str, Any]) -> Path:
-    _validate_lock(lock)
-    destination = Path(path).expanduser().resolve()
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{destination.name}.", dir=destination.parent
-    )
-    temporary = Path(temporary_name)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
-            stream.write(json.dumps(lock, ensure_ascii=False, indent=2) + "\n")
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, destination)
-    finally:
-        temporary.unlink(missing_ok=True)
-    return destination
-
-
-def _validate_lock(value: Any) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        raise ReproducibilityError("Lock root must be a JSON object")
-    if value.get("schema") != LOCK_SCHEMA:
-        raise ReproducibilityError(f"Unsupported lock schema: {value.get('schema')!r}")
-    fields = set(value)
-    if fields != _LOCK_FIELDS:
-        missing = sorted(_LOCK_FIELDS - fields)
-        unknown = sorted(fields - _LOCK_FIELDS)
-        details = []
-        if missing:
-            details.append(f"missing fields: {', '.join(missing)}")
-        if unknown:
-            details.append(f"unknown fields: {', '.join(unknown)}")
-        raise ReproducibilityError("Invalid lock fields (" + "; ".join(details) + ")")
-    for field in ("ssmd_content_fingerprint", "runtime_fingerprint", "prepared_output_sha256"):
-        if not _is_sha256(value[field]):
-            raise ReproducibilityError(f"Lock field {field} must be a SHA-256 digest")
-    for field in ("chapters", "runtime", "normalization_profile"):
-        if not isinstance(value[field], dict):
-            raise ReproducibilityError(f"Lock field {field} must be a JSON object")
-    if any(
-        not isinstance(chapter_id, str)
-        or not isinstance(chapter, dict)
-        or set(chapter) != {"sha256"}
-        or not _is_sha256(chapter["sha256"])
-        for chapter_id, chapter in value["chapters"].items()
-    ):
-        raise ReproducibilityError("Lock chapters must map IDs to {sha256: digest} objects")
-    if any(
-        not isinstance(name, str) or not isinstance(version, str)
-        for name, version in value["runtime"].items()
-    ):
-        raise ReproducibilityError("Lock runtime must map package names to version strings")
-    profile = value["normalization_profile"]
-    profile_fields = {
-        "language",
-        "options_sha256",
-        "pronunciation_profile_sha256",
-        "profile_sha256",
-    }
-    if set(profile) not in (profile_fields, profile_fields | {"sequence_fallback_mode"}):
-        raise ReproducibilityError("Lock normalization_profile has invalid fields")
-    if "sequence_fallback_mode" in profile and (
-        not isinstance(profile["sequence_fallback_mode"], str)
-        or profile["sequence_fallback_mode"] not in SEQUENCE_FALLBACK_MODES
-    ):
-        raise ReproducibilityError(
-            "Lock normalization_profile.sequence_fallback_mode must be 'spell' or 'preserve'"
         )
-    if not isinstance(profile["language"], str) or not profile["language"]:
-        raise ReproducibilityError("Lock normalization_profile.language must be a non-empty string")
-    for field in ("options_sha256", "pronunciation_profile_sha256", "profile_sha256"):
-        if not _is_sha256(profile[field]):
-            raise ReproducibilityError(
-                f"Lock normalization_profile.{field} must be a SHA-256 digest"
-            )
-    expected_runtime = runtime_fingerprint(value["runtime"])
-    if value["runtime_fingerprint"] != expected_runtime:
-        raise ReproducibilityError("Lock runtime_fingerprint does not match its runtime versions")
-    expected_profile = _fingerprint(
-        {
-            "language": profile["language"],
-            "options_sha256": profile["options_sha256"],
-            "pronunciation_profile_sha256": profile["pronunciation_profile_sha256"],
+    return _fingerprint(payload)
+
+
+def runtime_fingerprint(versions: Mapping[str, str] | None = None) -> str:
+    """Hash ttsready, spokenform, and phrasplit versions only."""
+    selected = (
+        runtime_versions()
+        if versions is None
+        else {
+            name: str(versions.get(name, "unknown"))
+            for name in ("ttsready", "spokenform", "phrasplit")
         }
     )
-    if profile["profile_sha256"] != expected_profile:
-        raise ReproducibilityError("Lock normalization profile fingerprint is inconsistent")
-    return value
+    return _fingerprint(selected)
 
 
-def read_lock(path: str | Path) -> dict[str, Any]:
-    lock_path = Path(path).expanduser()
-    try:
-        value = json.loads(lock_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise ReproducibilityError(f"Could not read ttsready lock {lock_path}: {exc}") from exc
-    return _validate_lock(value)
+def unit_fingerprint(
+    unit: TextUnit,
+    *,
+    profile_fingerprint: str,
+    override_fingerprint: str,
+    runtime_fingerprint: str,
+) -> str:
+    """Fingerprint one caller unit and the policies/runtime used to process it."""
+    return _fingerprint(
+        {
+            "id": unit.id,
+            "text_sha256": text_sha256(unit.text),
+            "language": unit.language,
+            "role": unit.role,
+            "protected_spans": [
+                {"start": span.start, "end": span.end, "reason": span.reason}
+                for span in unit.protected_spans
+            ],
+            "profile_fingerprint": profile_fingerprint,
+            "override_fingerprint": override_fingerprint,
+            "runtime_fingerprint": runtime_fingerprint,
+        }
+    )
 
 
-def _differences(path: str, recorded: Any, current: Any) -> list[str]:
-    if isinstance(recorded, dict) and isinstance(current, dict):
-        differences = []
-        for key in sorted(set(recorded) | set(current)):
-            child_path = f"{path}.{key}" if path else str(key)
-            if key not in recorded:
-                differences.append(f"{child_path}: missing from lock")
-            elif key not in current:
-                differences.append(f"{child_path}: no longer present")
-            else:
-                differences.extend(_differences(child_path, recorded[key], current[key]))
-        return differences
-    if recorded != current:
-        return [f"{path}: locked {recorded!r}, current {current!r}"]
-    return []
+def prepared_fingerprint(units: Iterable[PreparedUnit]) -> str:
+    """Digest ordered caller unit IDs and their prepared spoken text."""
+    return _fingerprint(
+        [{"unit_id": unit.unit_id, "spoken_text": unit.spoken_text} for unit in units]
+    )
 
 
-def verify_lock(path: str | Path, current: dict[str, Any]) -> None:
-    recorded = read_lock(path)
-    _validate_lock(current)
-    differences = _differences("", recorded, current)
-    if differences:
-        details = "\n".join(f"- {difference}" for difference in differences)
-        raise ReproducibilityError(f"Lock verification failed:\n{details}")
+__all__ = [
+    "override_fingerprint",
+    "prepared_fingerprint",
+    "profile_fingerprint",
+    "runtime_fingerprint",
+    "runtime_versions",
+    "unit_fingerprint",
+]

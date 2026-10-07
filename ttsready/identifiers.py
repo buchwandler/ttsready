@@ -1,78 +1,73 @@
-"""Stable source-anchored identifiers for review records."""
+"""Source-neutral deterministic identifiers and text digests."""
 
 from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections.abc import Mapping
-from pathlib import Path
 from typing import Any
 
-from .models import Section
+from .models import JsonValue, SpeechOverride
 
 
-def stable_id(prefix: str, payload: Mapping[str, Any]) -> str:
-    """Return a deterministic, versioned ID for a JSON-compatible payload."""
-    canonical = json.dumps(
-        payload,
+def _json_value(value: Any) -> JsonValue:
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("identifier payload contains a non-finite number")
+        return value
+    if isinstance(value, Mapping):
+        result: dict[str, JsonValue] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise ValueError("identifier payload mapping keys must be strings")
+            result[key] = _json_value(item)
+        return result
+    if isinstance(value, (list, tuple)):
+        return [_json_value(item) for item in value]
+    raise ValueError(f"identifier payload contains non-JSON value {type(value).__name__}")
+
+
+def canonical_json(value: Any) -> str:
+    """Encode JSON values with stable key order and compact separators."""
+    return json.dumps(
+        _json_value(value),
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
-    ).encode("utf-8")
-    digest = hashlib.sha256(canonical).hexdigest()[:20]
+        allow_nan=False,
+    )
+
+
+def stable_id(prefix: str, payload: Mapping[str, JsonValue]) -> str:
+    """Return a deterministic, compact v1 identifier for a JSON payload."""
+    if not isinstance(prefix, str) or not prefix or ":" in prefix:
+        raise ValueError("ID prefix must be a non-empty string without ':'")
+    digest = hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()[:20]
     return f"{prefix}:v1:{digest}"
 
 
 def text_sha256(text: str) -> str:
+    """Return a SHA-256 digest of UTF-8 text."""
+    if not isinstance(text, str):
+        raise TypeError("text_sha256 expects a string")
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def file_sha256(path: str | Path) -> str | None:
-    try:
-        with open(path, "rb") as source:
-            digest = hashlib.sha256()
-            for chunk in iter(lambda: source.read(1024 * 1024), b""):
-                digest.update(chunk)
-    except OSError:
-        return None
-    return digest.hexdigest()
-
-
-def section_locator(section: Section) -> str:
-    if section.source_ref:
-        return f"ref:{section.source_ref}"
-    return f"id:{section.id}"
-
-
-def context_id(
-    section: Section,
-    *,
-    kind: str,
-    source_text: str,
-    duplicate_ordinal: int,
-) -> str:
-    return stable_id(
-        "ctx",
-        {
-            "section": section_locator(section),
-            "kind": kind,
-            "text_sha256": text_sha256(source_text),
-            "duplicate_ordinal": duplicate_ordinal,
-        },
-    )
-
-
-def change_id(
-    context_id: str,
+def source_change_id(
+    unit_id: str,
     *,
     source_start: int,
     source_end: int,
     source: str,
 ) -> str:
+    """Identify a source occurrence independently of replacement or backend."""
     return stable_id(
         "chg",
         {
-            "context_id": context_id,
+            "unit_id": unit_id,
             "source_start": source_start,
             "source_end": source_end,
             "source": source,
@@ -80,39 +75,24 @@ def change_id(
     )
 
 
-def utterance_id(
-    context_id: str,
-    *,
-    source_start: int,
-    source_end: int,
-    source: str,
-) -> str:
-    """Return a stable ID for one source utterance span."""
+def override_id(override: SpeechOverride) -> str:
+    """Return the deterministic identity for source-neutral override policy."""
+    scope = override.scope
     return stable_id(
-        "utt",
+        "ovr",
         {
-            "context_id": context_id,
-            "source_start": source_start,
-            "source_end": source_end,
-            "source": source,
+            "surface": override.surface,
+            "spoken": override.spoken,
+            "match": override.match,
+            "case_sensitive": override.case_sensitive,
+            "scope": {
+                "kind": scope.kind,
+                "unit_id": scope.unit_id,
+                "source_start": scope.source_start,
+                "source_end": scope.source_end,
+            },
         },
     )
 
 
-def speaker_decision_id(
-    utterance_id_value: str,
-    *,
-    speaker_id: str | None,
-    provider: str,
-    provider_model: str | None,
-) -> str:
-    """Return a stable speaker decision ID independent of output voice names or status."""
-    return stable_id(
-        "spk",
-        {
-            "utterance_id": utterance_id_value,
-            "speaker_id": speaker_id,
-            "provider": provider,
-            "provider_model": provider_model,
-        },
-    )
+__all__ = ["canonical_json", "override_id", "source_change_id", "stable_id", "text_sha256"]

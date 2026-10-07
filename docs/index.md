@@ -1,8 +1,8 @@
 # ttsready documentation
 
-`ttsready` reviews canonical SSMD documents for speech preparation and writes explicit, reviewed SSMD changes. Source-format conversion belongs to `ssmdconvert`; audio rendering belongs to downstream tools.
+`ttsready` is a source-neutral Python API for preparing caller-owned text for speech. It does not parse source formats, read or write files, expose a CLI, or generate audio.
 
-Start with the [installation guide](installation.md) and [quickstart](quickstart.md). The quickstart uses the runnable `examples/basic.ssmd.md` fixture from the repository.
+Start with the [installation guide](installation.md) and [quickstart](quickstart.md). The [ownership boundary](ownership-boundary.md) explains how callers adapt their data to and from the library.
 
 ```{toctree}
 :maxdepth: 2
@@ -10,11 +10,11 @@ Start with the [installation guide](installation.md) and [quickstart](quickstart
 
 installation
 quickstart
-cli
 python-api
-review-workflow
+overrides
+qa
 reproducibility
-speakers
 ownership-boundary
+migration
 changelog
 ```

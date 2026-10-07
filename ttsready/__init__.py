@@ -1,63 +1,90 @@
-"""Canonical SSMD preparation, review, and text export."""
+"""Source-neutral preparation, QA, reproducibility, and review APIs."""
 
 from __future__ import annotations
 
 try:
     from ._version import version as __version__
-except (ImportError, AttributeError):
-    try:
-        from importlib.metadata import version
+except (ImportError, AttributeError):  # pragma: no cover - bare source tree
+    __version__ = "0.2.0"
 
-        __version__ = version("ttsready")
-    except Exception:  # pragma: no cover - bare source tree
-        __version__ = "0.1.0.dev0"
-
-from .errors import TTSReadyError, UnsupportedInputError
-from .input import load, load_ssmd
-from .models import (
-    ContextRecord,
-    ConversionReport,
-    ConversionResult,
-    Document,
-    NormalizationProfile,
-    PreparedParagraph,
-    PreparedSegment,
-    RenderOptions,
-    Section,
-    SectionStats,
-    SourceInfo,
-    SpokenChange,
-    SpokenformStats,
-    TTSPlan,
+from .context import context_for_change
+from .errors import (
+    InvalidUnitError,
+    MappingError,
+    OverrideConflictError,
+    PreparationError,
+    TTSReadyError,
 )
-from .pipeline import convert, prepare, prepare_tts_plan, source_paragraphs
-from .planning import render_preview
-from .selection import parse_section_range
+from .lexical_review import LexicalFinding, LexicalOccurrence, LexicalReviewResult, review_lexicon
+from .models import (
+    ChangeContext,
+    JsonScalar,
+    JsonValue,
+    OverrideScope,
+    PreparationIssue,
+    PreparationProfile,
+    PreparationResult,
+    PreparationStats,
+    PreparedUnit,
+    ProtectedSpan,
+    SentenceSpan,
+    SpeechOverride,
+    SpokenChange,
+    TextChunk,
+    TextUnit,
+    UnitContext,
+)
+from .preparation import apply_changes, prepare_text, prepare_units, split_prepared_text
+from .qa import check_units
+from .reproducibility import (
+    override_fingerprint,
+    prepared_fingerprint,
+    profile_fingerprint,
+    runtime_fingerprint,
+    runtime_versions,
+    unit_fingerprint,
+)
+from .serialization import result_from_dict, result_to_dict
 
 __all__ = [
-    "ConversionResult",
-    "Document",
-    "ContextRecord",
-    "ConversionReport",
-    "PreparedParagraph",
-    "PreparedSegment",
-    "RenderOptions",
-    "NormalizationProfile",
-    "SectionStats",
+    "ChangeContext",
+    "InvalidUnitError",
+    "JsonScalar",
+    "JsonValue",
+    "LexicalFinding",
+    "LexicalOccurrence",
+    "LexicalReviewResult",
+    "MappingError",
+    "OverrideConflictError",
+    "OverrideScope",
+    "PreparationError",
+    "PreparationIssue",
+    "PreparationProfile",
+    "PreparationResult",
+    "PreparationStats",
+    "PreparedUnit",
+    "ProtectedSpan",
+    "SentenceSpan",
+    "SpeechOverride",
     "SpokenChange",
-    "SpokenformStats",
-    "Section",
-    "TTSPlan",
-    "SourceInfo",
     "TTSReadyError",
-    "UnsupportedInputError",
+    "TextChunk",
+    "TextUnit",
+    "UnitContext",
     "__version__",
-    "convert",
-    "load",
-    "load_ssmd",
-    "prepare",
-    "prepare_tts_plan",
-    "render_preview",
-    "source_paragraphs",
-    "parse_section_range",
+    "apply_changes",
+    "check_units",
+    "context_for_change",
+    "override_fingerprint",
+    "prepare_text",
+    "prepare_units",
+    "prepared_fingerprint",
+    "profile_fingerprint",
+    "result_from_dict",
+    "result_to_dict",
+    "review_lexicon",
+    "runtime_fingerprint",
+    "runtime_versions",
+    "split_prepared_text",
+    "unit_fingerprint",
 ]

@@ -1,18 +1,23 @@
 # Installation
 
-`ttsready` requires Python 3.10 or newer. Install the package from PyPI:
+`ttsready` 0.2 requires Python 3.10 or newer. Install it with pip:
 
 ```bash
 python -m pip install ttsready
 ```
 
-Optional extras provide lexical evidence and speaker suggestions:
+The library's runtime dependencies are `spokenform>=0.4.6,<1` and `phrasplit>=0.3.9,<1`. The package does not install format parsers, file readers, a CLI framework, or an audio renderer.
+
+Install the optional `lexical` extra when using integrations that need the `lexhint` lexical-evidence package:
 
 ```bash
 python -m pip install 'ttsready[lexical]'
-python -m pip install 'ttsready[speakers]'
 ```
 
-The core package uses `ssmd` to parse canonical SSMD and `ssmdconvert` to load and write `.ssmdbook` bundles. It does not install EPUB or PDF readers. Convert source formats to SSMD with `ssmdconvert` before using `ttsready`.
+For development, install the development tools and tests:
 
-See the [quickstart](quickstart.md) to check an example document, or the [CLI reference](cli.md) for command summaries.
+```bash
+python -m pip install 'ttsready[dev]'
+```
+
+Continue with the [quickstart](quickstart.md) or the full [Python API reference](python-api.md).

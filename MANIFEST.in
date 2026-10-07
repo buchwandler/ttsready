@@ -1,0 +1,13 @@
+include LICENSE README.md RELEASING.md pyproject.toml
+recursive-include ttsready *.py py.typed
+recursive-include docs *.md *.txt *.py Makefile make.bat
+recursive-include examples *.py
+recursive-include tools *.py
+prune .git
+prune .ledger
+prune build
+prune dist
+prune docs/_build
+prune tests
+global-exclude *.py[cod]
+global-exclude __pycache__

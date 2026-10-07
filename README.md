@@ -1,140 +1,72 @@
 # ttsready
 
-`ttsready` analyzes canonical SSMD 0.9 documents and `.ssmdbook` bundles, reviews speech decisions, and can materialize approved changes back into SSMD. It does not ingest EPUB, PDF, Markdown, HTML, or plain-text source files directly, and it does not generate audio.
+`ttsready` is a source-neutral Python library for preparing caller-owned text for speech. It accepts text units with explicit language and returns spoken text, exact source-relative changes, issues, context, statistics, and reproducibility fingerprints.
 
-Python 3.10 or newer is required. The CI matrix targets Python 3.10 through 3.14. See the [documentation](docs/index.md) for the installation guide, quickstart, and workflows.
-
-The interchange boundary is the SSMD artifact:
-
-```text
-source formats -> ssmdconvert -> canonical SSMD -> ttsready review/materialization
-                                                    |
-                                                    v
-                                         reviewed SSMD for downstream TTS
-```
-
-`ssmdconvert` owns source extraction, conversion, chapter identity, and book-bundle integrity. `ttsready` owns SSMD speech analysis, review, reproducibility, and reviewed SSMD changes. Downstream renderers consume the resulting SSMD document or book. There is no runtime API coupling between `ttsready` and a renderer.
-
-## Supported inputs
-
-`ttsready` accepts:
-
-- standalone `.ssmd` and `.ssmd.md` documents;
-- `.ssmdbook` directory bundles;
-- `.ssmdbook.zip` bundles.
-
-Inputs must contain valid SSMD 0.9. Convert EPUB, PDF, Markdown, HTML, text, or other supported sources with `ssmdconvert` first:
-
-```bash
-ssmdconvert book convert novel.epub -o novel.ssmdbook
-ssmdconvert convert manuscript.md -o manuscript.ssmd
-```
+The library does **not** read or write files, parse SSMD or other formats, expose a CLI, generate audio, or own a document workflow. Callers adapt their source format to `TextUnit` values and decide what to do with the returned data.
 
 ## Install
+
+Python 3.10 or newer is required.
 
 ```bash
 python -m pip install ttsready
 ```
 
-The package depends on `ssmd` and `ssmdconvert` for canonical parsing and book loading. It does not install independent EPUB or PDF readers. Optional extras provide lexical evidence and speaker suggestions:
+The runtime dependencies are `spokenform>=0.4.6,<1` and `phrasplit>=0.3.9,<1`. Install the optional lexical extra when you need its lexical-evidence integrations:
 
 ```bash
 python -m pip install 'ttsready[lexical]'
-python -m pip install 'ttsready[speakers]'
 ```
 
 ## Quickstart
 
-From the repository root, run the included example through the main CLI workflows:
+```python
+from ttsready import prepare_text
 
-```bash
-python -m pip install -e .
-ttsready preflight examples/basic.ssmd.md
-ttsready report examples/basic.ssmd.md
-ttsready preview examples/basic.ssmd.md
-ttsready export examples/basic.ssmd.md --format txt -o /tmp/basic.txt
+prepared = prepare_text("A young reader opened a book.", language="en-US")
+print(prepared.spoken_text)
+
+for change in prepared.changes:
+    print(change.source, "→", change.replacement, change.source_start, change.source_end)
 ```
 
-The same input can be loaded with the [Python API](docs/python-api.md). See [examples/basic_preview.py](examples/basic_preview.py) for a complete runnable example.
+`prepare_text()` prepares one unit and returns a `PreparedUnit`. Use `prepare_units()` when you have multiple caller-owned units, possibly with different languages, roles, protected spans, or metadata. See [docs/quickstart.md](docs/quickstart.md) and the runnable [API example](examples/basic_prepare.py).
 
-## Review workflow
+## Core contract
 
-Create a report to inspect Spokenform candidates and their SSMD source spans:
-
-```bash
-ttsready report novel.ssmdbook -c 5-17
-ttsready report novel.ssmdbook --format json -o novel.report.json
-```
-
-Reports persist analysis snapshots. `context` looks up an existing cached finding and does not rerun conversion or Spokenform. Use `--refresh` on `report` to request fresh analysis:
-
-```bash
-ttsready context novel.ssmdbook chg:v1:8d1b2d540c6d995a51ac
-ttsready report novel.ssmdbook -c 5 --refresh
-```
-
-An exact reviewed pronunciation can be materialized as an SSMD `sub` annotation. By default, the command writes a separate `.reviewed` artifact. Use `--write` only to explicitly replace the source:
-
-```bash
-ttsready override novel.ssmdbook chg:v1:8d1b2d540c6d995a51ac \
-  --spoken 'habitat, commercial, industrial'
-```
-
-Speaker review uses logical IDs from the sidecar registry. Accepted or manual decisions can be materialized as SSMD `voice` annotations. Provider voice names remain a downstream rendering concern:
-
-```bash
-ttsready speakers novel.ssmdbook --config novel.ttsready.yaml --jev
-ttsready speaker-set novel.ssmdbook --config novel.ttsready.yaml \
-  --utterance utt:v1:0123456789abcdef0123 --speaker alice
-ttsready speaker-materialize novel.ssmdbook --config novel.ttsready.yaml \
-  --utterance utt:v1:0123456789abcdef0123
-```
-
-## Reproducibility and output
-
-Create and verify a strict lock for canonical content, runtime, normalization profile, and prepared output. `freeze` writes a separate SSMD artifact with the selected automatic transformations materialized:
-
-```bash
-ttsready lock novel.ssmdbook -o novel.ssmdbook.ttsready.lock.json
-ttsready verify novel.ssmdbook --lock novel.ssmdbook.ttsready.lock.json
-ttsready freeze novel.ssmdbook -o novel.frozen.ssmdbook
-```
-
-`preview` prints prepared speech. `export` writes plain TXT from the same structured TTS plan. TXT applies speech substitutions but cannot preserve SSMD-only structure such as logical voice annotations:
-
-```bash
-ttsready preview novel.ssmdbook -c 5
-ttsready export novel.ssmdbook --format txt --layout chapters -o novel-txt/
-```
-
-Use `ttsready --help` and command-specific `--help` for the complete CLI options.
-
-## Python API
+- Inputs are immutable `TextUnit` records with caller-chosen IDs, text, explicit language, optional role, protected spans, and JSON-safe metadata.
+- `SpeechOverride` values express global, unit-scoped, or exact-occurrence pronunciation policy.
+- Results expose exact half-open source and output spans, stable IDs, warnings and residual QA issues, sentence context, and aggregate statistics.
+- JSON serialization and fingerprints are pure; persistence and storage are caller responsibilities.
 
 ```python
-from ttsready import load, prepare_tts_plan, render_preview
+from ttsready import TextUnit, prepare_units
 
-canonical = load("novel.ssmdbook")
-plan = prepare_tts_plan(canonical, language="en")
-preview = render_preview(plan)
+result = prepare_units(
+    (
+        TextUnit("chapter-1", "2 kg", "en-US", role="body"),
+        TextUnit("caption-1", "Bonjour.", "fr-FR", role="caption"),
+    )
+)
+
+for unit in result.units:
+    print(unit.unit_id, unit.spoken_text)
 ```
 
-For SSMD text already held in memory, use `load_ssmd()`:
+## Documentation
 
-```python
-from ttsready import load_ssmd
+- [Installation](docs/installation.md)
+- [Quickstart](docs/quickstart.md)
+- [Python API](docs/python-api.md)
+- [Overrides](docs/overrides.md)
+- [Residual QA](docs/qa.md)
+- [Reproducibility and serialization](docs/reproducibility.md)
+- [Ownership boundary](docs/ownership-boundary.md)
+- [Migration from 0.1.x](docs/migration.md)
 
-document = load_ssmd(ssmd_text, section_id="chapter-0001")
-```
+## Migrating from 0.1.x
 
-`prepare_tts_plan()` returns structured segments and a report without rendering audio. `render_preview()` renders that plan as plain text. The report, preview, and TXT export share the same preparation result.
-
-## Ownership boundary
-
-- `ssmdconvert` converts supported source formats to canonical SSMD and owns `.ssmdbook` loading, validation, and writes.
-- `ttsready` reviews canonical SSMD and writes explicit reviewed semantics such as `sub` and logical `voice` annotations into SSMD.
-- Downstream tools consume canonical or reviewed SSMD. Tools exchange content through SSMD documents, not through a `ttsready` runtime integration API.
-- The existing `ssmdconvert.speech` API remains available for compatibility. It is separate from the `ttsready` review and materialization workflow.
+Version 0.2 is a breaking, API-only release. SSMD/document APIs, the CLI, file and cache I/O, writers, planning, speaker/JEV workflows, and their application-owned models were removed. Convert or read source data in your application, pass text units to `prepare_text()` or `prepare_units()`, then persist or render results in your application. See the [migration guide](docs/migration.md).
 
 ## License
 

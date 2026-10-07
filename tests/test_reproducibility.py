@@ -1,273 +1,60 @@
-from __future__ import annotations
+from dataclasses import replace
 
-import json
-from dataclasses import asdict
-from pathlib import Path
-from types import SimpleNamespace
-
-import spokenform
-from ssmdconvert import Book, BookChapter, load_book_bundle, write_book_bundle
-from ssmdconvert import SourceInfo as BookSourceInfo
-from typer.testing import CliRunner
-
-import ttsready.pipeline as pipeline
-from ttsready.cli import app
-from ttsready.input import load
-from ttsready.pipeline import prepare
-from ttsready.reproducibility import normalization_fingerprints
-from ttsready.sidecar import (
-    Sidecar,
+from ttsready import (
+    OverrideScope,
+    PreparationProfile,
     SpeechOverride,
-    canonical_source_identity,
-    save_sidecar,
+    TextUnit,
+    override_fingerprint,
+    prepare_units,
+    prepared_fingerprint,
+    profile_fingerprint,
+    runtime_fingerprint,
+    unit_fingerprint,
 )
 
-runner = CliRunner()
 
-
-def _source(
-    tmp_path: Path,
-    body: str = "He met Dr. Smith and found 3 items.",
-    *,
-    sequence_fallback_mode: str | None = None,
-) -> Path:
-    source = tmp_path / "book.ssmd.md"
-    fallback = (
-        f"sequence_fallback_mode: {sequence_fallback_mode}\n"
-        if sequence_fallback_mode is not None
-        else ""
-    )
-    source.write_text(
-        f'---\nssmd_version: "0.9"\ntitle: "Book"\nlanguage: en-US\n{fallback}---\n{body}\n',
-        encoding="utf-8",
-    )
-    return source
-
-
-def _create_lock(source: Path, lock_path: Path, *options: str):
-    return runner.invoke(app, ["lock", str(source), "-o", str(lock_path), *options])
-
-
-def _sidecar(source: Path, spoken: str = "Doctor") -> Sidecar:
-    return Sidecar(
-        source=canonical_source_identity(load(source)),
-        lexicon=(
-            SpeechOverride(
-                id="reviewed-dr",
-                surface="Dr.",
-                spoken=spoken,
-                match="literal",
-                case_sensitive=True,
-                kind="pronunciation",
-                scope={"type": "document"},
-                provenance={"reviewer": "human"},
-            ),
-        ),
-        characters=(),
-        speaker_annotations=(),
+def test_profile_and_override_fingerprints_capture_policy():
+    profile = PreparationProfile()
+    assert profile_fingerprint(profile) == profile_fingerprint(replace(profile))
+    assert profile_fingerprint(profile) != profile_fingerprint(
+        replace(profile, expand_numbers=not profile.expand_numbers)
     )
 
+    one = SpeechOverride("ACME", "A C M E")
+    two = SpeechOverride("ACME", "A C M E", scope=OverrideScope("unit", "u1"))
+    assert override_fingerprint((one,)) != override_fingerprint((two,))
 
-def test_lock_creation_is_deterministic_and_verification_is_strict(tmp_path: Path) -> None:
-    source = _source(tmp_path)
-    first = tmp_path / "first.lock.json"
-    second = tmp_path / "second.lock.json"
 
-    created = _create_lock(source, first)
-    repeated = _create_lock(source, second)
+def test_runtime_fingerprint_selects_only_semantic_runtime_versions():
+    base = {"ttsready": "0.2.0", "spokenform": "0.4.6", "phrasplit": "0.3.9"}
+    assert runtime_fingerprint(base) == runtime_fingerprint({**base, "unrelated": "9"})
+    assert runtime_fingerprint(base) != runtime_fingerprint({**base, "spokenform": "0.4.7"})
 
-    assert created.exit_code == 0, created.output
-    assert repeated.exit_code == 0, repeated.output
-    first_record = json.loads(first.read_text(encoding="utf-8"))
-    assert first_record == json.loads(second.read_text(encoding="utf-8"))
-    assert first_record["schema"] == "ttsready.lock.v1"
-    assert next(iter(first_record["chapters"].values())).keys() == {"sha256"}
-    assert first_record["normalization_profile"]["language"] == "en-US"
-    assert first_record["normalization_profile"]["sequence_fallback_mode"] == "spell"
-    assert len(first_record["normalization_profile"]["pronunciation_profile_sha256"]) == 64
 
-    profile_options = asdict(pipeline.normalization_profile("en-US"))
-    assert profile_options["sequence_fallback_mode"] == "spell"
-    lock_profile = first_record["normalization_profile"]
-    assert (
-        lock_profile["options_sha256"]
-        == normalization_fingerprints("en-US", profile_options, None)["options_sha256"]
+def test_unit_and_prepared_fingerprints_are_content_sensitive():
+    unit = TextUnit("u1", "2 kg", "en-US")
+    result = prepare_units((unit,))
+    profile_hash = profile_fingerprint(PreparationProfile())
+    override_hash = override_fingerprint(())
+    runtime_hash = runtime_fingerprint(
+        {"ttsready": "0.2.0", "spokenform": "0.4.6", "phrasplit": "0.3.9"}
     )
-    preserve_options = {**profile_options, "sequence_fallback_mode": "preserve"}
-    assert (
-        lock_profile["options_sha256"]
-        != normalization_fingerprints("en-US", preserve_options, None)["options_sha256"]
+    assert unit_fingerprint(
+        unit,
+        profile_fingerprint=profile_hash,
+        override_fingerprint=override_hash,
+        runtime_fingerprint=runtime_hash,
+    ) == unit_fingerprint(
+        unit,
+        profile_fingerprint=profile_hash,
+        override_fingerprint=override_hash,
+        runtime_fingerprint=runtime_hash,
     )
-    verified = runner.invoke(app, ["verify", str(source), "--lock", str(first)])
-    assert verified.exit_code == 0, verified.output
+    assert prepared_fingerprint(result.units) == prepared_fingerprint(result.units)
 
-    language_drift = runner.invoke(
-        app,
-        ["verify", str(source), "--lock", str(first), "--language", "en-GB"],
+    changed = prepare_units(
+        (unit,),
+        overrides=(SpeechOverride("kg", "kilograms", scope=OverrideScope("unit", "u1")),),
     )
-    assert language_drift.exit_code == 1
-    assert "normalization_profile.language" in language_drift.output
-
-
-def test_fallback_modes_have_distinct_normalization_fingerprints() -> None:
-    spell = asdict(pipeline.normalization_profile("en", sequence_fallback_mode="spell"))
-    preserve = asdict(pipeline.normalization_profile("en", sequence_fallback_mode="preserve"))
-
-    assert spell != preserve
-    assert (
-        normalization_fingerprints("en", spell, None)["options_sha256"]
-        != (normalization_fingerprints("en", preserve, None)["options_sha256"])
-    )
-
-
-def test_lock_records_fallback_mode_and_verify_detects_mode_drift(tmp_path: Path) -> None:
-    source = _source(tmp_path, sequence_fallback_mode="preserve")
-    lock_path = tmp_path / "book.lock.json"
-
-    created = _create_lock(source, lock_path)
-
-    assert created.exit_code == 0, created.output
-    record = json.loads(lock_path.read_text(encoding="utf-8"))
-    assert record["normalization_profile"]["sequence_fallback_mode"] == "preserve"
-
-    source.write_text(
-        source.read_text(encoding="utf-8").replace(
-            "sequence_fallback_mode: preserve", "sequence_fallback_mode: spell"
-        ),
-        encoding="utf-8",
-    )
-    verified = runner.invoke(app, ["verify", str(source), "--lock", str(lock_path)])
-
-    assert verified.exit_code == 1
-    assert "normalization_profile.sequence_fallback_mode" in verified.output
-
-
-def test_lock_verification_reports_runtime_version_drift(tmp_path: Path, monkeypatch) -> None:
-    source = _source(tmp_path)
-    lock_path = tmp_path / "book.lock.json"
-    created = _create_lock(source, lock_path)
-    assert created.exit_code == 0, created.output
-
-    changed_versions = dict(pipeline._tool_versions())
-    changed_versions["spokenform"] = "999.0"
-    monkeypatch.setattr(pipeline, "_tool_versions", lambda: changed_versions)
-
-    verified = runner.invoke(app, ["verify", str(source), "--lock", str(lock_path)])
-
-    assert verified.exit_code == 1
-    assert "runtime.spokenform" in verified.output
-    assert "runtime_fingerprint" in verified.output
-
-
-def test_lock_verification_detects_pronunciation_profile_drift(tmp_path: Path) -> None:
-    source = _source(tmp_path)
-    sidecar_path = tmp_path / "book.ttsready.yaml"
-    lock_path = tmp_path / "book.lock.json"
-    save_sidecar(sidecar_path, _sidecar(source, "Doctor"))
-
-    created = _create_lock(source, lock_path, "--config", str(sidecar_path))
-    assert created.exit_code == 0, created.output
-    save_sidecar(sidecar_path, _sidecar(source, "Physician"))
-
-    verified = runner.invoke(
-        app,
-        ["verify", str(source), "--lock", str(lock_path), "--config", str(sidecar_path)],
-    )
-
-    assert verified.exit_code == 1
-    assert "normalization_profile.pronunciation_profile_sha256" in verified.output
-
-
-def test_lock_verification_detects_canonical_content_drift(tmp_path: Path) -> None:
-    source = _source(tmp_path)
-    lock_path = tmp_path / "book.lock.json"
-    created = _create_lock(source, lock_path)
-    assert created.exit_code == 0, created.output
-
-    updated_source = source.read_text(encoding="utf-8").replace("3 items", "4 items")
-    source.write_text(updated_source, encoding="utf-8")
-    verified = runner.invoke(app, ["verify", str(source), "--lock", str(lock_path)])
-
-    assert verified.exit_code == 1
-    assert "ssmd_content_fingerprint" in verified.output
-
-
-def test_lock_and_freeze_support_ssmdbook_artifacts(tmp_path: Path) -> None:
-
-    source = tmp_path / "book.ssmdbook"
-    chapter_ssmd = chr(10).join(
-        [
-            "---",
-            'ssmd_version: "0.9"',
-            'title: "Chapter"',
-            "language: en-US",
-            "sequence_fallback_mode: preserve",
-            "---",
-            "Dr. found 3 items in-system target/destination.",
-            "",
-        ]
-    )
-    book = Book(
-        source=BookSourceInfo(format="epub", media_type="application/epub+zip", name="source.epub"),
-        metadata={
-            "title": "Book",
-            "language": "en-US",
-            "sequence_fallback_mode": "preserve",
-        },
-        chapters=(BookChapter("chapter-0001", 1, "Chapter", chapter_ssmd),),
-        source_sha256="a" * 64,
-        source_chapter_count=1,
-    )
-    write_book_bundle(book, source, format="directory")
-    lock_path = tmp_path / "book.lock.json"
-
-    created = _create_lock(source, lock_path)
-    assert created.exit_code == 0, created.output
-    verified = runner.invoke(app, ["verify", str(source), "--lock", str(lock_path)])
-    assert verified.exit_code == 0, verified.output
-
-    frozen_path = tmp_path / "book.frozen.ssmdbook"
-    frozen = runner.invoke(app, ["freeze", str(source), "-o", str(frozen_path)])
-
-    assert frozen.exit_code == 0, frozen.output
-    frozen_book = load_book_bundle(frozen_path)
-    assert '[Dr.]{sub="Doctor"}' in frozen_book.chapters[0].ssmd
-    assert frozen_book.metadata["sequence_fallback_mode"] == "preserve"
-    assert "sequence_fallback_mode: preserve" in frozen_book.chapters[0].ssmd
-    assert "in-system target/destination" in frozen_book.chapters[0].ssmd
-    assert '[3]{sub="three"}' in frozen_book.chapters[0].ssmd
-
-
-def test_freeze_materializes_transformations_and_is_engine_independent(
-    tmp_path: Path, monkeypatch
-) -> None:
-    source = _source(tmp_path)
-    source_before = source.read_bytes()
-    expected = prepare(load(source)).text
-    frozen_path = tmp_path / "book.frozen.ssmd.md"
-
-    frozen = runner.invoke(app, ["freeze", str(source), "-o", str(frozen_path)])
-
-    assert frozen.exit_code == 0, frozen.output
-    assert source.read_bytes() == source_before
-    frozen_ssmd = frozen_path.read_text(encoding="utf-8")
-    assert '[Dr.]{sub="Doctor"}' in frozen_ssmd
-    assert '[3]{sub="three"}' in frozen_ssmd
-
-    def unchanged_spokenform(text: str, **_kwargs):
-        return SimpleNamespace(spoken_text=text, stages=(), source_replacements=(), warnings=())
-
-    monkeypatch.setattr(spokenform, "prepare", unchanged_spokenform)
-    prepared_frozen = prepare(load(frozen_path))
-
-    assert prepared_frozen.text == expected
-    assert prepared_frozen.report is not None
-    assert {change.replacement for change in prepared_frozen.report.changes} >= {
-        "Doctor",
-        "three",
-    }
-    assert all(
-        change.stages == ("ssmd.sub",)
-        for change in prepared_frozen.report.changes
-        if change.source in {"Dr.", "3"}
-    )
+    assert prepared_fingerprint(result.units) != prepared_fingerprint(changed.units)
