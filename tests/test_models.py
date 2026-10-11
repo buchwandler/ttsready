@@ -129,3 +129,11 @@ def test_prepared_run_rejects_unreconstructable_or_foreign_changes():
     )
     with pytest.raises(ValueError, match="different run"):
         PreparedRun("run", "ab", "bb", "en-US", (foreign,), (), source_map)
+
+
+def test_spoken_change_preserves_language_and_rejects_non_string():
+    change = SpokenChange("change", "unit", 0, 1, 0, 1, "x", "y", language="en_US")
+
+    assert change.language == "en_US"
+    with pytest.raises(TypeError, match="language"):
+        SpokenChange("change", "unit", 0, 1, 0, 1, "x", "y", language=123)

@@ -193,6 +193,7 @@ class SpokenChange:
     rule: str | None = None
     recognition_domain: str | None = None
     provenance: Mapping[str, JsonValue] = field(default_factory=dict)
+    language: str | None = None
 
     def __post_init__(self) -> None:
         if self.source_start < 0 or self.source_end <= self.source_start:
@@ -201,6 +202,8 @@ class SpokenChange:
             raise ValueError("change output span must satisfy 0 <= start <= end")
         if not isinstance(self.source, str) or not isinstance(self.replacement, str):
             raise TypeError("change source and replacement must be strings")
+        if self.language is not None and not isinstance(self.language, str):
+            raise TypeError("change language must be a string or None")
         object.__setattr__(self, "stages", tuple(self.stages))
         object.__setattr__(self, "provenance", _json_mapping(self.provenance, "provenance"))
 

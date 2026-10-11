@@ -35,6 +35,7 @@ def test_prepare_text_returns_exact_source_and_output_changes():
     assert change.recognition_domain == "quantities"
     assert change.provenance["origin"] == "spokenform"
     assert change.provenance["language"] == "en-US"
+    assert change.language == "en"
     _assert_exact_mapping(prepared)
 
 
@@ -91,6 +92,7 @@ def test_explicit_override_merges_with_backend_mapping():
     assert prepared.changes[0].provenance["origin"] == "spokenform"
     assert prepared.changes[1].provenance["origin"] == "override"
     _assert_exact_mapping(prepared)
+    assert prepared.changes[1].language is None
 
 
 def test_equal_priority_conflicting_overrides_fail():

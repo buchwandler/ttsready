@@ -32,4 +32,5 @@ restored = result_from_dict(json.loads(encoded))
 assert restored == result
 ```
 
+New `ttsready.preparation.v2` payloads include `SpokenChange.language` as a string or `null`. Older v2 payloads without that key deserialize with `language=None`. This additive metadata does not change existing fingerprints.
 `PreparationResult.to_dict()` and `.from_dict()` provide the same contract. Serialization uses a versioned result schema; it does not write data to disk. JSON-safe metadata and provenance are required so serialized results remain portable.

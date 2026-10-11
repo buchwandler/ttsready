@@ -59,6 +59,7 @@ def _change(data: Mapping[str, Any]) -> SpokenChange:
             str(data["recognition_domain"]) if data.get("recognition_domain") is not None else None
         ),
         provenance=dict(data.get("provenance", {})),
+        language=(str(data["language"]) if data.get("language") is not None else None),
     )
 
 

@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import pytest
+import spokenform
 from spokenform import TokenAnnotation
 from spokenform.mapping import OffsetMap
 
@@ -207,3 +208,161 @@ def test_prepare_run_does_not_require_sentence_splitting(monkeypatch):
 
     monkeypatch.setattr("ttsready.preparation.phrasplit.split_with_offsets", fail)
     assert prepare_run("plain text", language="en-US").spoken_text == "plain text"
+
+
+def test_prepare_run_preserves_backend_language_per_change():
+    text = "Dr. bought 5 kg."
+    language = "en-us"
+    profile = PreparationProfile(
+        use_spacy=False,
+        symbol_mode="none",
+        normalize_unicode=False,
+        normalize_whitespace=False,
+        strip_outer_whitespace=False,
+        collapse_horizontal_whitespace=False,
+        normalize_line_whitespace=False,
+        collapse_blank_lines=False,
+        generic_acronym_mode="known_only",
+        sequence_fallback_mode="preserve",
+        expand_abbreviations=True,
+        expand_structured=True,
+        expand_numbers=True,
+    )
+    option_names = (
+        "use_spacy",
+        "symbol_mode",
+        "normalize_unicode",
+        "normalize_whitespace",
+        "strip_outer_whitespace",
+        "collapse_horizontal_whitespace",
+        "normalize_line_whitespace",
+        "collapse_blank_lines",
+        "generic_acronym_mode",
+        "sequence_fallback_mode",
+        "expand_abbreviations",
+        "expand_structured",
+        "expand_numbers",
+    )
+    direct = spokenform.prepare_language(
+        text,
+        language=language,
+        protected_spans=(),
+        annotations=None,
+        preserve_run_boundaries=False,
+        strict=False,
+        **{name: getattr(profile, name) for name in option_names},
+    )
+    prepared = prepare_run(text, language=language, profile=profile)
+
+    assert prepared.spoken_text == direct.spoken_text
+    assert len(prepared.changes) == len(direct.source_replacements) == 2
+    for change, backend_change in zip(prepared.changes, direct.source_replacements, strict=True):
+        assert (
+            change.source_start,
+            change.source_end,
+            change.output_start,
+            change.output_end,
+            change.source,
+            change.replacement,
+            change.stages,
+            change.kind,
+            change.rule,
+            change.recognition_domain,
+        ) == (
+            backend_change.source_start,
+            backend_change.source_end,
+            backend_change.output_start,
+            backend_change.output_end,
+            backend_change.source,
+            backend_change.replacement,
+            backend_change.stages,
+            backend_change.kind,
+            backend_change.rule,
+            backend_change.recognition_domain,
+        )
+    assert [change.language for change in prepared.changes] == ["en_US", "en"]
+    assert prepared.language == "en-us"
+    assert all(change.provenance["language"] == "en-us" for change in prepared.changes)
+    for name in ("source_left", "source_right", "output_left", "output_right"):
+        assert getattr(prepared.source_map, name) == getattr(direct.offset_map, name)
+    for position in range(len(text) + 1):
+        for bias in ("left", "right"):
+            actual = prepared.source_map.source_to_output(position, bias=bias)
+            expected = direct.offset_map.source_to_output(position, bias=bias)
+            assert actual == expected
+
+
+def test_prepare_run_keeps_missing_backend_change_language_as_none(monkeypatch):
+    replacement = SimpleNamespace(
+        source_start=0,
+        source_end=1,
+        output_start=0,
+        output_end=1,
+        source="x",
+        replacement="y",
+        stages=("test",),
+        kind="test",
+        rule="test.rule",
+        recognition_domain=None,
+    )
+    backend = SimpleNamespace(
+        spoken_text="y",
+        source_replacements=(replacement,),
+        warnings=(),
+        offset_map=OffsetMap.identity(1),
+    )
+    monkeypatch.setattr("ttsready.preparation.spokenform.prepare_language", lambda *a, **k: backend)
+
+    prepared = prepare_run("x", language="en-us")
+
+    assert prepared.spoken_text == "y"
+    assert prepared.language == "en-us"
+    assert len(prepared.changes) == 1
+    change = prepared.changes[0]
+    assert (change.source_start, change.source_end, change.source) == (0, 1, "x")
+    assert (change.output_start, change.output_end, change.replacement) == (0, 1, "y")
+    assert change.language is None
+    assert change.provenance["language"] == "en-us"
+
+
+def test_prepare_run_preserves_distinct_change_languages_across_runs(monkeypatch):
+    language_values = {"en-us": ("en_US", "en"), "de-de": ("de_DE", "de")}
+
+    def backend(text, *, language, **kwargs):
+        values = language_values[language]
+        replacements = tuple(
+            SimpleNamespace(
+                source_start=index,
+                source_end=index + 1,
+                output_start=index,
+                output_end=index + 1,
+                source=source,
+                replacement=replacement,
+                stages=("test",),
+                kind="test",
+                rule=f"test.rule.{index}",
+                recognition_domain=None,
+                language=change_language,
+            )
+            for index, (source, replacement, change_language) in enumerate(
+                zip(text, ("x", "y"), values, strict=True)
+            )
+        )
+        spoken_text = "".join(item.replacement for item in replacements)
+        return SimpleNamespace(
+            spoken_text=spoken_text,
+            source_replacements=replacements,
+            warnings=(),
+            offset_map=OffsetMap.identity(len(text)),
+        )
+
+    monkeypatch.setattr("ttsready.preparation.spokenform.prepare_language", backend)
+    first = prepare_run("ab", language="en-us")
+    second = prepare_run("ab", language="de-de")
+
+    assert [change.language for change in first.changes] == ["en_US", "en"]
+    assert [change.language for change in second.changes] == ["de_DE", "de"]
+    assert first.language == "en-us"
+    assert second.language == "de-de"
+    assert [change.id for change in first.changes] == [change.id for change in second.changes]
+    assert [change.source for change in first.changes] == ["a", "b"]

@@ -89,6 +89,16 @@ prepared = prepare_text(
 
 `SpokenChange` records a stable ID, unit ID, original and replacement text, source/output offsets, transformation stages, kind, and JSON-safe provenance. The offsets are half-open Python string indices. Apply a change set with `apply_changes(source_text, changes)`; it verifies that every source span still selects the expected source text and rejects overlapping or stale changes.
 
+`SpokenChange.language` is the effective language reported by the preparation backend for that individual replacement. TTSReady preserves it exactly, even when its spelling or case differs from `PreparedRun.language` or `PreparedUnit.language`; if the backend supplies no per-change language, the value is `None`. TTSReady does not infer or substitute a value. Use this typed field for replacement-level language; the existing `provenance["language"]` remains run/unit context and is not the per-change contract.
+
+```python
+from ttsready import prepare_run
+
+run = prepare_run("Dr. bought 5 kg.", language="en-us")
+for change in run.changes:
+    print(change.source, change.language)
+```
+
 A `PreparedUnit` contains sentence context for both source and spoken text. For a specific change in an aggregate result, `context_for_change(result, change_id)` returns its unit and overlapping source/spoken sentences.
 
 ## Serialization

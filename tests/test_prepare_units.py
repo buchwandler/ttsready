@@ -14,6 +14,7 @@ def test_prepare_units_preserves_order_and_aggregates_generic_stats():
     assert [unit.language for unit in result.units] == ["en-US", "fr-FR"]
     assert result.units[0].spoken_text == "two kilograms"
     assert result.stats.units_processed == 2
+    assert result.changes[0].language == "en"
     assert result.stats.units_changed == 1
     assert result.stats.changes == 1
     assert result.stats.structured_numeric_edits == 1

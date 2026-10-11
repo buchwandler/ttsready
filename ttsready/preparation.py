@@ -183,9 +183,12 @@ def _sentence_spans(text: str, language: str) -> tuple[SentenceSpan, ...]:
 def _change_from_backend(
     unit: TextUnit,
     normalized: tuple[Any, ...],
-) -> tuple[int, int, str, str, tuple[str, ...], str, str | None, str | None, Mapping[str, Any]]:
+) -> tuple[
+    int, int, str, str, tuple[str, ...], str, str | None, str | None, str | None, Mapping[str, Any]
+]:
     start, end, source, replacement, item = normalized
     stages = tuple(str(stage) for stage in (_replacement_value(item, "stages", ()) or ()))
+    language = _replacement_value(item, "language")
     evidence: dict[str, Any] = {"origin": "spokenform", "language": unit.language}
     for name in ("recognition_evidence", "evidence_source", "evidence_score", "evidence_cues"):
         value = _replacement_value(item, name)
@@ -200,6 +203,7 @@ def _change_from_backend(
         str(_replacement_value(item, "kind", "normalization")),
         _replacement_value(item, "rule"),
         _replacement_value(item, "recognition_domain"),
+        language,
         evidence,
     )
 
@@ -361,6 +365,7 @@ def _prepare_unit(
                 "override",
                 None,
                 None,
+                None,
                 {
                     "origin": "override",
                     "override_id": str(override.id),
@@ -375,7 +380,7 @@ def _prepare_unit(
     output_parts: list[str] = []
     output_offset = 0
     for item in replacements:
-        start, end, source, replacement, stages, kind, rule, domain, provenance = item
+        start, end, source, replacement, stages, kind, rule, domain, language, provenance = item
         if start < cursor:
             raise MappingError("backend and override changes overlap in source coordinates")
         output_parts.append(unit.text[cursor:start])
@@ -405,6 +410,7 @@ def _prepare_unit(
                 rule=rule,
                 recognition_domain=domain,
                 provenance=provenance,
+                language=language,
             )
         )
         cursor = end
@@ -540,6 +546,7 @@ def prepare_run(
             kind,
             rule,
             domain,
+            language,
             provenance,
         ) = _change_from_backend(unit, normalized)
         output_start = start + delta
@@ -564,6 +571,7 @@ def prepare_run(
                 rule=rule,
                 recognition_domain=domain,
                 provenance=provenance,
+                language=language,
             )
         )
         delta += len(replacement) - (end - start)

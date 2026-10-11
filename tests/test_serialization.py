@@ -13,7 +13,7 @@ from ttsready.models import (
 )
 
 
-def _result():
+def _result(*, language: str | None = "en_US"):
     change = SpokenChange(
         id="chg:v1:occurrence",
         unit_id="unit/opaque",
@@ -26,6 +26,7 @@ def _result():
         stages=("numbers",),
         kind="number",
         provenance={"origin": "spokenform", "evidence": ["test"]},
+        language=language,
     )
     context = UnitContext(
         unit_id="unit/opaque",
@@ -70,7 +71,10 @@ def _result():
 
 def test_preparation_result_json_round_trip_is_semantically_equal():
     original = _result()
-    encoded = json.dumps(original.to_dict(), allow_nan=False, sort_keys=True)
+    data = original.to_dict()
+    assert data["changes"][0]["language"] == "en_US"
+    assert data["units"][0]["changes"][0]["language"] == "en_US"
+    encoded = json.dumps(data, allow_nan=False, sort_keys=True)
     restored = PreparationResult.from_dict(json.loads(encoded))
 
     assert restored == original
@@ -102,3 +106,22 @@ def _assert_json_values(value):
 
 def test_serialized_result_contains_only_builtin_json_values():
     _assert_json_values(_result().to_dict())
+
+
+def test_serialization_emits_explicit_none_change_language():
+    data = _result(language=None).to_dict()
+
+    assert data["changes"][0]["language"] is None
+    assert data["units"][0]["changes"][0]["language"] is None
+
+
+def test_serialization_accepts_v2_change_without_language():
+    data = _result().to_dict()
+    del data["changes"][0]["language"]
+    del data["units"][0]["changes"][0]["language"]
+
+    restored = PreparationResult.from_dict(data)
+
+    assert data["schema"] == "ttsready.preparation.v2"
+    assert restored.changes[0].language is None
+    assert restored.units[0].changes[0].language is None
