@@ -1,9 +1,9 @@
-"""Immutable, source-neutral data models for the ttsready 0.2 API."""
+"""Immutable, source-neutral data models for the ttsready 0.3 API."""
 
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Literal
@@ -47,6 +47,27 @@ class ProtectedSpan:
     def __post_init__(self) -> None:
         if self.start < 0 or self.end <= self.start:
             raise ValueError("protected span must satisfy 0 <= start < end")
+
+
+@dataclass(frozen=True, slots=True)
+class LinguisticToken:
+    start: int
+    end: int
+    text: str | None = None
+    pos: str | None = None
+    tag: str | None = None
+    lemma: str | None = None
+    language: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.start, int) or isinstance(self.start, bool) or self.start < 0:
+            raise ValueError("linguistic token start must be a non-negative integer")
+        if not isinstance(self.end, int) or isinstance(self.end, bool) or self.end <= self.start:
+            raise ValueError("linguistic token end must be an integer greater than start")
+        for name in ("text", "pos", "tag", "lemma", "language"):
+            value = getattr(self, name)
+            if value is not None and not isinstance(value, str):
+                raise TypeError(f"linguistic token {name} must be a string or None")
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,6 +226,244 @@ class PreparationIssue:
         ):
             raise ValueError("issue source span is invalid")
         object.__setattr__(self, "provenance", _json_mapping(self.provenance, "provenance"))
+
+
+@dataclass(frozen=True, slots=True)
+class SourceOutputMap:
+    source_length: int
+    output_length: int
+    source_left: tuple[int, ...]
+    source_right: tuple[int, ...]
+    output_left: tuple[int, ...]
+    output_right: tuple[int, ...]
+
+    def __post_init__(self) -> None:
+        for name in ("source_length", "output_length"):
+            value = getattr(self, name)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError(f"{name} must be a non-negative integer")
+
+        for name in ("source_left", "source_right", "output_left", "output_right"):
+            try:
+                values = tuple(getattr(self, name))
+            except TypeError as exc:
+                raise ValueError(f"{name} must be a sequence of boundary integers") from exc
+            if any(not isinstance(value, int) or isinstance(value, bool) for value in values):
+                raise ValueError(f"{name} must contain only integers")
+            object.__setattr__(self, name, values)
+
+        expected_lengths = {
+            "source_left": self.source_length + 1,
+            "source_right": self.source_length + 1,
+            "output_left": self.output_length + 1,
+            "output_right": self.output_length + 1,
+        }
+        for name, expected in expected_lengths.items():
+            if len(getattr(self, name)) != expected:
+                raise ValueError(f"{name} must contain exactly {expected} boundaries")
+
+        if any(
+            left > right for left, right in zip(self.source_left, self.source_right, strict=True)
+        ):
+            raise ValueError("source_left boundaries must not exceed source_right boundaries")
+        for name in ("source_left", "source_right"):
+            values = getattr(self, name)
+            if any(value < 0 or value > self.output_length for value in values):
+                raise ValueError(f"{name} contains a value outside the output range")
+            if any(left > right for left, right in zip(values, values[1:], strict=False)):
+                raise ValueError(f"{name} must be monotonic non-decreasing")
+
+        if any(
+            left > right for left, right in zip(self.output_left, self.output_right, strict=True)
+        ):
+            raise ValueError("output_left boundaries must not exceed output_right boundaries")
+        for name in ("output_left", "output_right"):
+            values = getattr(self, name)
+            if any(value < 0 or value > self.source_length for value in values):
+                raise ValueError(f"{name} contains a value outside the source range")
+            if any(left > right for left, right in zip(values, values[1:], strict=False)):
+                raise ValueError(f"{name} must be monotonic non-decreasing")
+
+    @classmethod
+    def identity(cls, length: int) -> SourceOutputMap:
+        if not isinstance(length, int) or isinstance(length, bool) or length < 0:
+            raise ValueError("identity length must be a non-negative integer")
+        boundaries = tuple(range(length + 1))
+        return cls(length, length, boundaries, boundaries, boundaries, boundaries)
+
+    @classmethod
+    def concatenate(cls, maps: Iterable[SourceOutputMap]) -> SourceOutputMap:
+        items = tuple(maps)
+        if any(not isinstance(item, cls) for item in items):
+            raise TypeError("concatenate accepts only SourceOutputMap values")
+        items = tuple(item for item in items if item.source_length or item.output_length)
+        if not items:
+            return cls.identity(0)
+
+        source_length = 0
+        output_length = 0
+        source_left: list[int] = []
+        source_right: list[int] = []
+        output_left: list[int] = []
+        output_right: list[int] = []
+        for index, item in enumerate(items):
+            source_left_values = item.source_left if index == 0 else item.source_left[1:]
+            source_right_values = item.source_right if index == 0 else item.source_right[1:]
+            output_left_values = item.output_left if index == 0 else item.output_left[1:]
+            output_right_values = item.output_right if index == 0 else item.output_right[1:]
+            source_left.extend(value + output_length for value in source_left_values)
+            source_right.extend(value + output_length for value in source_right_values)
+            output_left.extend(value + source_length for value in output_left_values)
+            output_right.extend(value + source_length for value in output_right_values)
+            source_length += item.source_length
+            output_length += item.output_length
+        return cls(
+            source_length,
+            output_length,
+            tuple(source_left),
+            tuple(source_right),
+            tuple(output_left),
+            tuple(output_right),
+        )
+
+    def source_to_output(self, position: int, *, bias: Literal["left", "right"] = "left") -> int:
+        return self._map_position(
+            position, bias, self.source_length, self.source_left, self.source_right
+        )
+
+    def output_to_source(self, position: int, *, bias: Literal["left", "right"] = "left") -> int:
+        return self._map_position(
+            position, bias, self.output_length, self.output_left, self.output_right
+        )
+
+    @staticmethod
+    def _map_position(
+        position: int,
+        bias: Literal["left", "right"],
+        length: int,
+        left: tuple[int, ...],
+        right: tuple[int, ...],
+    ) -> int:
+        if (
+            not isinstance(position, int)
+            or isinstance(position, bool)
+            or not 0 <= position <= length
+        ):
+            raise ValueError(f"position must be an integer in 0..{length}")
+        if bias != "left" and bias != "right":
+            raise ValueError("bias must be 'left' or 'right'")
+        return (left if bias == "left" else right)[position]
+
+    def map_source_span(self, start: int, end: int) -> tuple[int, int]:
+        self._validate_span(start, end, self.source_length)
+        return self.source_to_output(start, bias="left"), self.source_to_output(end, bias="right")
+
+    def map_output_span(self, start: int, end: int) -> tuple[int, int]:
+        self._validate_span(start, end, self.output_length)
+        return self.output_to_source(start, bias="left"), self.output_to_source(end, bias="right")
+
+    @staticmethod
+    def _validate_span(start: int, end: int, length: int) -> None:
+        if (
+            not isinstance(start, int)
+            or isinstance(start, bool)
+            or not isinstance(end, int)
+            or isinstance(end, bool)
+            or not 0 <= start <= end <= length
+        ):
+            raise ValueError(f"span must satisfy 0 <= start <= end <= {length}")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "source_length": self.source_length,
+            "output_length": self.output_length,
+            "source_left": list(self.source_left),
+            "source_right": list(self.source_right),
+            "output_left": list(self.output_left),
+            "output_right": list(self.output_right),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, object]) -> SourceOutputMap:
+        if not isinstance(data, Mapping):
+            raise TypeError("source/output map data must be a mapping")
+        try:
+            return cls(
+                source_length=data["source_length"],
+                output_length=data["output_length"],
+                source_left=tuple(data["source_left"]),
+                source_right=tuple(data["source_right"]),
+                output_left=tuple(data["output_left"]),
+                output_right=tuple(data["output_right"]),
+            )
+        except KeyError as exc:
+            raise ValueError(f"source/output map data is missing {exc.args[0]!r}") from exc
+        except TypeError as exc:
+            raise ValueError("source/output map boundary arrays must be iterable") from exc
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedRun:
+    unit_id: str
+    source_text: str
+    spoken_text: str
+    language: str
+    changes: tuple[SpokenChange, ...]
+    issues: tuple[PreparationIssue, ...]
+    source_map: SourceOutputMap
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.unit_id, str) or not self.unit_id:
+            raise ValueError("run unit_id must be a non-empty string")
+        if not isinstance(self.language, str) or not self.language.strip():
+            raise ValueError("run language must be a non-empty string")
+        if not isinstance(self.source_text, str) or not isinstance(self.spoken_text, str):
+            raise TypeError("run source_text and spoken_text must be strings")
+        if not isinstance(self.source_map, SourceOutputMap):
+            raise TypeError("run source_map must be a SourceOutputMap")
+        if self.source_map.source_length != len(self.source_text):
+            raise ValueError("run source map length differs from source_text")
+        if self.source_map.output_length != len(self.spoken_text):
+            raise ValueError("run source map length differs from spoken_text")
+
+        changes = tuple(self.changes)
+        issues = tuple(self.issues)
+        cursor = 0
+        delta = 0
+        rendered: list[str] = []
+        for change in changes:
+            if not isinstance(change, SpokenChange):
+                raise TypeError("run changes must contain only SpokenChange values")
+            if change.unit_id != self.unit_id:
+                raise ValueError("prepared change belongs to a different run")
+            if change.source_start < cursor or change.source_end > len(self.source_text):
+                raise ValueError("prepared changes overlap or exceed source text")
+            if self.source_text[change.source_start : change.source_end] != change.source:
+                raise ValueError("prepared change source does not match source_text")
+            expected_start = change.source_start + delta
+            expected_end = expected_start + len(change.replacement)
+            if (change.output_start, change.output_end) != (expected_start, expected_end):
+                raise ValueError("prepared change output coordinates are inconsistent")
+            if self.spoken_text[change.output_start : change.output_end] != change.replacement:
+                raise ValueError("prepared change output span does not select its replacement")
+            rendered.extend((self.source_text[cursor : change.source_start], change.replacement))
+            cursor = change.source_end
+            delta += len(change.replacement) - len(change.source)
+        rendered.append(self.source_text[cursor:])
+        if "".join(rendered) != self.spoken_text:
+            raise ValueError("prepared changes do not reconstruct spoken_text")
+        if any(not isinstance(issue, PreparationIssue) for issue in issues):
+            raise TypeError("run issues must contain only PreparationIssue values")
+        object.__setattr__(self, "changes", changes)
+        object.__setattr__(self, "issues", issues)
+
+    @property
+    def changed(self) -> bool:
+        return self.source_text != self.spoken_text
+
+    @property
+    def warnings(self) -> tuple[str, ...]:
+        return tuple(issue.message for issue in self.issues if issue.severity == "warning")
 
 
 @dataclass(frozen=True, slots=True)

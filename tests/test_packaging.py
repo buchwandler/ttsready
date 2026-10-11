@@ -17,7 +17,7 @@ def test_runtime_metadata_has_no_removed_dependencies_or_console_script():
 
     for removed in ("ssmd", "ssmdconvert", "utterplan", "pyyaml", "typer", "pyjev"):
         assert not re.search(rf"[\"']{removed}(?:[<>=!~]|[\"'])", runtime_dependencies)
-    assert '"spokenform>=0.4.5,<1"' in runtime_dependencies
+    assert '"spokenform>=0.4.5,<0.5"' in runtime_dependencies
     assert '"phrasplit>=0.3.9,<1"' in runtime_dependencies
     assert "[project.scripts]" not in pyproject
     assert '"lexhint>=' in pyproject
@@ -68,7 +68,7 @@ def test_built_wheel_contains_typed_marker_and_imports_without_console_script(tm
         assert not any(name.endswith("entry_points.txt") for name in names)
         metadata_path = next(name for name in names if name.endswith(".dist-info/METADATA"))
         metadata = email.message_from_bytes(archive.read(metadata_path))
-        assert metadata["Version"] == "0.2.0"
+        assert metadata["Version"] == "0.2.1"
 
         requirements = metadata.get_all("Requires-Dist") or []
         assert any("spokenform" in item.lower() and ">=0.4.5" in item for item in requirements)
@@ -81,7 +81,7 @@ def test_built_wheel_contains_typed_marker_and_imports_without_console_script(tm
             sys.executable,
             "-c",
             "import sys, ttsready; "
-            "assert ttsready.__version__ == '0.2.0'; "
+            "assert ttsready.__version__ == '0.2.1'; "
             "assert not {'ssmd', 'ssmdconvert', 'utterplan', 'typer'} & set(sys.modules)",
         ],
         check=False,

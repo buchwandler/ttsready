@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from typing import Any
 
 import phrasplit
@@ -12,13 +13,16 @@ import spokenform
 from .errors import InvalidUnitError, MappingError, PreparationError
 from .identifiers import source_change_id
 from .models import (
+    LinguisticToken,
     PreparationIssue,
     PreparationProfile,
     PreparationResult,
     PreparationStats,
+    PreparedRun,
     PreparedUnit,
     ProtectedSpan,
     SentenceSpan,
+    SourceOutputMap,
     SpeechOverride,
     SpokenChange,
     TextChunk,
@@ -200,6 +204,122 @@ def _change_from_backend(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class _BackendPreparation:
+    spoken_text: str
+    replacements: tuple[tuple[Any, ...], ...]
+    issues: tuple[PreparationIssue, ...]
+    source_map: SourceOutputMap
+
+
+def _validate_linguistic_tokens(
+    text: str,
+    tokens: Iterable[LinguisticToken],
+) -> tuple[LinguisticToken, ...]:
+    if not isinstance(text, str):
+        raise InvalidUnitError("linguistic token input text must be a string")
+    try:
+        supplied = tuple(tokens)
+    except TypeError as exc:
+        raise InvalidUnitError("linguistic_tokens must be iterable") from exc
+    if any(not isinstance(token, LinguisticToken) for token in supplied):
+        raise InvalidUnitError("linguistic_tokens must contain only LinguisticToken values")
+
+    ordered = tuple(sorted(supplied, key=lambda token: (token.start, token.end)))
+    previous_end = 0
+    for token in ordered:
+        if token.end > len(text):
+            raise InvalidUnitError("linguistic token is outside the supplied run text")
+        if token.start < previous_end:
+            raise InvalidUnitError("linguistic tokens must not overlap")
+        if token.text is not None and text[token.start : token.end] != token.text:
+            raise InvalidUnitError("linguistic token text does not match the supplied run text")
+        previous_end = token.end
+    return ordered
+
+
+def _spokenform_annotations(
+    text: str,
+    tokens: tuple[LinguisticToken, ...],
+) -> tuple[spokenform.TokenAnnotation, ...]:
+    return tuple(
+        spokenform.TokenAnnotation(
+            start=token.start,
+            end=token.end,
+            text=token.text,
+            pos=token.pos,
+            tag=token.tag,
+            lemma=token.lemma,
+            language=token.language,
+        )
+        for token in tokens
+    )
+
+
+def _source_output_map(backend: object) -> SourceOutputMap:
+    offset_map = getattr(backend, "offset_map", None)
+    if offset_map is None:
+        raise MappingError("spokenform result does not expose offset_map")
+    try:
+        return SourceOutputMap(
+            source_length=offset_map.source_length,
+            output_length=offset_map.output_length,
+            source_left=tuple(offset_map.source_left),
+            source_right=tuple(offset_map.source_right),
+            output_left=tuple(offset_map.output_left),
+            output_right=tuple(offset_map.output_right),
+        )
+    except Exception as exc:
+        raise MappingError(f"spokenform result exposes a malformed offset_map: {exc}") from exc
+
+
+def _prepare_backend(
+    unit: TextUnit,
+    profile: PreparationProfile,
+    *,
+    strict: bool,
+    protected_spans: Iterable[tuple[int, int]] = (),
+    annotations: tuple[Any, ...] | None = None,
+    preserve_run_boundaries: bool = False,
+) -> _BackendPreparation:
+    backend_spans = tuple(protected_spans)
+    try:
+        backend = spokenform.prepare_language(
+            unit.text,
+            language=unit.language,
+            protected_spans=backend_spans,
+            annotations=annotations,
+            preserve_run_boundaries=preserve_run_boundaries,
+            **_backend_options(profile, strict=strict),
+        )
+    except Exception as exc:
+        raise PreparationError(f"spokenform failed to prepare unit {unit.id!r}: {exc}") from exc
+
+    spoken_text = getattr(backend, "spoken_text", getattr(backend, "text", None))
+    if not isinstance(spoken_text, str):
+        raise MappingError("spokenform result does not expose spoken_text")
+    replacements = _normalize_backend_changes(unit, backend)
+    _verify_protected_spans(unit, replacements, spoken_text)
+    source_map = _source_output_map(backend)
+    if source_map.source_length != len(unit.text) or source_map.output_length != len(spoken_text):
+        raise MappingError("spokenform offset_map lengths do not match source and spoken text")
+
+    issues = tuple(
+        PreparationIssue(
+            code="spokenform.warning",
+            severity="warning",
+            unit_id=unit.id,
+            source_start=None,
+            source_end=None,
+            text=None,
+            message=str(warning),
+            provenance={"origin": "spokenform", "language": unit.language},
+        )
+        for warning in (getattr(backend, "warnings", ()) or ())
+    )
+    return _BackendPreparation(spoken_text, replacements, issues, source_map)
+
+
 def _prepare_unit(
     unit: TextUnit,
     overrides: tuple[SpeechOverride, ...],
@@ -212,21 +332,15 @@ def _prepare_unit(
         (match.start, match.end) for match in resolved
     )
 
-    try:
-        backend = spokenform.prepare_language(
-            unit.text,
-            language=unit.language,
-            protected_spans=backend_spans,
-            **_backend_options(profile, strict=strict),
-        )
-    except Exception as exc:
-        raise PreparationError(f"spokenform failed to prepare unit {unit.id!r}: {exc}") from exc
-
-    backend_text = getattr(backend, "spoken_text", getattr(backend, "text", None))
-    if not isinstance(backend_text, str):
-        raise MappingError("spokenform result does not expose spoken_text")
-    backend_changes = _normalize_backend_changes(unit, backend)
-    _verify_protected_spans(unit, backend_changes, backend_text)
+    backend_result = _prepare_backend(
+        unit,
+        profile,
+        strict=strict,
+        protected_spans=backend_spans,
+        preserve_run_boundaries=False,
+    )
+    backend_text = backend_result.spoken_text
+    backend_changes = backend_result.replacements
     for match in resolved:
         start, end = match.start, match.end
         if any(_overlaps((start, end), (item[0], item[1])) for item in backend_changes):
@@ -304,19 +418,7 @@ def _prepare_unit(
         raise MappingError("merged source-relative changes do not reconstruct spoken_text")
 
     issues = list(resolution_issues)
-    issues.extend(
-        PreparationIssue(
-            code="spokenform.warning",
-            severity="warning",
-            unit_id=unit.id,
-            source_start=None,
-            source_end=None,
-            text=None,
-            message=str(warning),
-            provenance={"origin": "spokenform", "language": unit.language},
-        )
-        for warning in (getattr(backend, "warnings", ()) or ())
-    )
+    issues.extend(backend_result.issues)
     context = UnitContext(
         unit_id=unit.id,
         role=unit.role,
@@ -384,6 +486,96 @@ def prepare_text(
         tuple(overrides),
         profile or PreparationProfile(),
         strict=strict,
+    )
+
+
+def prepare_run(
+    text: str,
+    *,
+    language: str,
+    unit_id: str = "run",
+    protected_spans: Iterable[ProtectedSpan | tuple[int, int]] = (),
+    linguistic_tokens: Iterable[LinguisticToken] = (),
+    profile: PreparationProfile | None = None,
+    strict: bool = False,
+    preserve_run_boundaries: bool = False,
+) -> PreparedRun:
+    """Prepare one source-relative run for a caller-owned speech pipeline.
+
+    Explicit linguistic tokens take precedence over Spokenform's optional
+    internal spaCy analysis; TTSReady never loads or receives a provider object.
+    """
+    unit = TextUnit(
+        id=unit_id,
+        text=text,
+        language=language,
+        protected_spans=tuple(protected_spans),
+    )
+    effective_profile = PreparationProfile() if profile is None else profile
+    if not isinstance(effective_profile, PreparationProfile):
+        raise PreparationError("profile must be a PreparationProfile")
+    if not isinstance(preserve_run_boundaries, bool):
+        raise TypeError("preserve_run_boundaries must be a bool")
+
+    tokens = _validate_linguistic_tokens(unit.text, linguistic_tokens)
+    annotations = _spokenform_annotations(unit.text, tokens) if tokens else None
+    backend = _prepare_backend(
+        unit,
+        effective_profile,
+        strict=strict,
+        protected_spans=tuple((span.start, span.end) for span in unit.protected_spans),
+        annotations=annotations,
+        preserve_run_boundaries=preserve_run_boundaries,
+    )
+
+    changes: list[SpokenChange] = []
+    delta = 0
+    for normalized in backend.replacements:
+        (
+            start,
+            end,
+            source,
+            replacement,
+            stages,
+            kind,
+            rule,
+            domain,
+            provenance,
+        ) = _change_from_backend(unit, normalized)
+        output_start = start + delta
+        output_end = output_start + len(replacement)
+        changes.append(
+            SpokenChange(
+                id=source_change_id(
+                    unit.id,
+                    source_start=start,
+                    source_end=end,
+                    source=source,
+                ),
+                unit_id=unit.id,
+                source_start=start,
+                source_end=end,
+                output_start=output_start,
+                output_end=output_end,
+                source=source,
+                replacement=replacement,
+                stages=stages,
+                kind=kind,
+                rule=rule,
+                recognition_domain=domain,
+                provenance=provenance,
+            )
+        )
+        delta += len(replacement) - (end - start)
+
+    return PreparedRun(
+        unit_id=unit.id,
+        source_text=unit.text,
+        spoken_text=backend.spoken_text,
+        language=unit.language,
+        changes=tuple(changes),
+        issues=backend.issues,
+        source_map=backend.source_map,
     )
 
 
@@ -482,4 +674,4 @@ def split_prepared_text(
     return tuple(chunks)
 
 
-__all__ = ["apply_changes", "prepare_text", "prepare_units", "split_prepared_text"]
+__all__ = ["apply_changes", "prepare_run", "prepare_text", "prepare_units", "split_prepared_text"]

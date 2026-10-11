@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import pytest
+from spokenform.mapping import OffsetMap
 
 from ttsready.errors import PreparationError
 from ttsready.models import ProtectedSpan, TextUnit
@@ -38,7 +39,12 @@ def test_qa_skips_protected_suspicious_characters():
 
 
 def test_strict_preparation_fails_on_residual_error_issue(monkeypatch):
-    backend_result = SimpleNamespace(spoken_text="bad �", source_replacements=(), warnings=())
+    backend_result = SimpleNamespace(
+        spoken_text="bad �",
+        source_replacements=(),
+        warnings=(),
+        offset_map=OffsetMap.identity(len("bad �")),
+    )
     monkeypatch.setattr(
         "ttsready.preparation.spokenform.prepare_language",
         lambda *args, **kwargs: backend_result,
@@ -49,7 +55,12 @@ def test_strict_preparation_fails_on_residual_error_issue(monkeypatch):
 
 
 def test_strict_preparation_does_not_escalate_warnings(monkeypatch):
-    backend_result = SimpleNamespace(spoken_text="€", source_replacements=(), warnings=())
+    backend_result = SimpleNamespace(
+        spoken_text="€",
+        source_replacements=(),
+        warnings=(),
+        offset_map=OffsetMap.identity(len("€")),
+    )
     monkeypatch.setattr(
         "ttsready.preparation.spokenform.prepare_language",
         lambda *args, **kwargs: backend_result,

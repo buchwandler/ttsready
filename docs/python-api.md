@@ -24,6 +24,31 @@ prepared.context
 
 `prepare_text()` returns one `PreparedUnit`. Optional arguments include source-relative `protected_spans`, `SpeechOverride` values, JSON-safe caller `metadata`, a `PreparationProfile`, and `strict=True`.
 
+## Prepare a compiler-owned run
+
+`prepare_run()` is the low-level source-neutral primitive for a compiler or pipeline that already owns linguistic and sentence analysis. It returns a `PreparedRun` with source/output text, changes, generic issues, language, and an exact `SourceOutputMap`. It does not apply `SpeechOverride`, build `UnitContext`, split sentences, or create aggregate fingerprints.
+
+```python
+from ttsready import LinguisticToken, prepare_run
+
+source = "Dr. Smith uses 2 kg."
+run = prepare_run(
+    source,
+    language="en-US",
+    linguistic_tokens=(LinguisticToken(0, 3, text="Dr.", pos="PROPN", tag="NNP"),),
+    preserve_run_boundaries=True,
+)
+
+run.spoken_text
+run.changes
+run.source_map.map_source_span(0, 3)
+run.source_map.to_dict()  # diagnostic representation; not result serialization
+```
+
+Token offsets and optional token text refer to exactly the supplied `text`. Callers may derive hints from spaCy or another analyzer, but pass only the provider-neutral `LinguisticToken` fields; TTSReady never accepts the provider object. When tokens are supplied, they are authoritative even if `profile.use_spacy=True`, while that profile option is still forwarded unchanged. TTSReady performs no second NLP pass. Consumers that need POS or morphology on normalized output must analyze `run.spoken_text` downstream.
+
+`SourceOutputMap` preserves Spokenform's left/right boundary biases. Left bias selects the left edge of an ambiguous replacement region; right bias selects the right edge. Span helpers use left bias for the start and right bias for the end. `SourceOutputMap.concatenate()` composes maps for independently prepared slices. `preserve_run_boundaries=True` prevents outer run whitespace from being treated as isolated-document whitespace; it is for slices that will be concatenated, not language detection.
+
 ## Prepare ordered units
 
 ```python

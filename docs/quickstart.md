@@ -18,6 +18,26 @@ for change in prepared.changes:
 
 Both spans are half-open Python string offsets. The source span selects the original occurrence; the output span selects its replacement in `spoken_text`.
 
+## Compiler-owned runs
+
+If your pipeline already performs linguistic analysis and segmentation, use `prepare_run()` instead of wrapping the run in review-oriented `TextUnit` context:
+
+```python
+from ttsready import LinguisticToken, prepare_run
+
+source = "Dr. Smith measured 2 kg."
+run = prepare_run(
+    source,
+    language="en-US",
+    linguistic_tokens=(LinguisticToken(0, 3, text="Dr.", pos="PROPN"),),
+    preserve_run_boundaries=True,
+)
+print(run.spoken_text)
+output_start, output_end = run.source_map.map_source_span(0, 3)
+```
+
+`LinguisticToken` offsets are relative to exactly this run. Hints can come from any analyzer; TTSReady does not load or receive its provider object. Source maps retain left/right bias at ambiguous replacements, and their span helpers use left bias for the start and right bias for the end. Concatenate maps with `SourceOutputMap.concatenate()` when the caller combines independently prepared runs. `prepare_run()` does not apply overrides or split sentences; see [Python API](python-api.md) for the contract and `prepare_text()`/`prepare_units()` for review-oriented preparation.
+
 ## Multiple units
 
 Use `TextUnit` and `prepare_units()` for multiple text segments. Each unit supplies its own language and stable caller ID; order is preserved.

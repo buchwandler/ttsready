@@ -1,6 +1,6 @@
 # ttsready
 
-`ttsready` is a source-neutral Python library for preparing caller-owned text for speech. It accepts text units with explicit language and returns spoken text, exact source-relative changes, issues, context, statistics, and reproducibility fingerprints.
+`ttsready` is a source-neutral Python library for preparing caller-owned text for speech. `prepare_run()` is the low-level compiler-facing primitive for already analyzed runs; `prepare_text()` and `prepare_units()` provide review-oriented results with changes, issues, context, QA, statistics, and reproducibility fingerprints.
 
 The library does **not** read or write files, parse SSMD or other formats, expose a CLI, generate audio, or own a document workflow. Callers adapt their source format to `TextUnit` values and decide what to do with the returned data.
 
@@ -12,7 +12,7 @@ Python 3.10 or newer is required.
 python -m pip install ttsready
 ```
 
-The runtime dependencies are `spokenform>=0.4.5,<1` and `phrasplit>=0.3.9,<1`. Install the optional lexical extra when you need its lexical-evidence integrations:
+The runtime dependencies are `spokenform>=0.4.5,<0.5` and `phrasplit>=0.3.9,<1`. Install the optional lexical extra when you need its lexical-evidence integrations:
 
 ```bash
 python -m pip install 'ttsready[lexical]'
@@ -32,12 +32,32 @@ for change in prepared.changes:
 
 `prepare_text()` prepares one unit and returns a `PreparedUnit`. Use `prepare_units()` when you have multiple caller-owned units, possibly with different languages, roles, protected spans, or metadata. See [docs/quickstart.md](docs/quickstart.md) and the runnable [API example](examples/basic_prepare.py).
 
+### Compiler-facing run API
+
+Pipelines that already own token and sentence analysis can use `prepare_run()` directly:
+
+```python
+from ttsready import LinguisticToken, prepare_run
+
+source = "Dr. Smith recorded 2 kg."
+run = prepare_run(
+    source,
+    language="en-US",
+    linguistic_tokens=(LinguisticToken(0, 3, text="Dr.", pos="PROPN"),),
+    preserve_run_boundaries=True,
+)
+print(run.spoken_text)
+print(run.source_map.map_source_span(0, 3))
+```
+
+Hints are provider-neutral and source-relative to the supplied run; TTSReady never accepts a spaCy/provider object. `PreparedRun` has no overrides or sentence context. `SourceOutputMap` preserves exact forward/reverse boundary bias and can be concatenated across runs. See [Python API](docs/python-api.md) for detailed semantics and the distinction from `prepare_text()`/`prepare_units()`.
+
 ## Core contract
 
-- Inputs are immutable `TextUnit` records with caller-chosen IDs, text, explicit language, optional role, protected spans, and JSON-safe metadata.
-- `SpeechOverride` values express global, unit-scoped, or exact-occurrence pronunciation policy.
-- Results expose exact half-open source and output spans, stable IDs, warnings and residual QA issues, sentence context, and aggregate statistics.
-- JSON serialization and fingerprints are pure; persistence and storage are caller responsibilities.
+- `prepare_run()` accepts plain text, explicit language, protected spans, and source-relative `LinguisticToken` hints without requiring an NLP provider object.
+- `prepare_text()` and `prepare_units()` accept immutable `TextUnit` records; `SpeechOverride` values express global, unit-scoped, or exact-occurrence pronunciation policy.
+- `PreparedRun` returns exact `SourceOutputMap` boundary mappings; review-oriented results add context, QA, fingerprints, and aggregate statistics.
+- Existing result JSON serialization and fingerprints are pure; run maps are in-memory/diagnostic values and persistence remains the caller's responsibility.
 
 ```python
 from ttsready import TextUnit, prepare_units
@@ -66,7 +86,7 @@ for unit in result.units:
 
 ## Migrating from 0.1.x
 
-Version 0.2 is a breaking, API-only release. SSMD/document APIs, the CLI, file and cache I/O, writers, planning, speaker/JEV workflows, and their application-owned models were removed. Convert or read source data in your application, pass text units to `prepare_text()` or `prepare_units()`, then persist or render results in your application. See the [migration guide](docs/migration.md).
+Version 0.2 introduced a breaking, API-only boundary. SSMD/document APIs, the CLI, file and cache I/O, writers, planning, speaker/JEV workflows, and their application-owned models were removed. Convert or read source data in your application, pass text units to `prepare_text()` or `prepare_units()`, then persist or render results in your application. See the [migration guide](docs/migration.md).
 
 ## License
 

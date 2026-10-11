@@ -14,6 +14,8 @@ print(result.prepared_fingerprint)
 
 The runtime fingerprint covers `ttsready`, `spokenform`, and `phrasplit`. The prepared-output fingerprint covers ordered unit IDs and their spoken text. `profile_fingerprint()`, `override_fingerprint()`, `runtime_fingerprint()`, and `unit_fingerprint()` are available for caller-defined verification or record layouts. Change IDs identify the source occurrence (`unit_id`, source span, and source text), not the replacement value.
 
+`prepare_run()` is a compiler-facing in-memory result and does not return a `PreparationResult` fingerprint bundle. `SourceOutputMap.to_dict()`/`from_dict()` support diagnostics and tests only; maps are not inserted into the existing `ttsready.preparation.v2` result schema. Linguistic hints and run-boundary flags do not change the existing profile, override, or prepared-unit fingerprint semantics.
+
 Fingerprints are digests, not locks or persistent records. `ttsready` does not read a source file, create a cache, save a lock, or verify stored state; the caller chooses storage, retention, and comparison policy.
 
 ## JSON round trips

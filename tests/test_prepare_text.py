@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import pytest
+from spokenform.mapping import OffsetMap
 
 from ttsready.errors import (
     InvalidUnitError,
@@ -142,6 +143,7 @@ def test_inconsistent_backend_mapping_fails_closed(monkeypatch):
             ),
         ),
         warnings=(),
+        offset_map=OffsetMap.identity(3),
     )
     monkeypatch.setattr(
         "ttsready.preparation.spokenform.prepare_language", lambda *args, **kwargs: broken

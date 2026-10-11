@@ -5,7 +5,7 @@ from __future__ import annotations
 try:
     from ._version import version as __version__
 except (ImportError, AttributeError):  # pragma: no cover - bare source tree
-    __version__ = "0.2.0"
+    __version__ = "0.2.1"
 
 from .context import context_for_change
 from .errors import (
@@ -20,21 +20,30 @@ from .models import (
     ChangeContext,
     JsonScalar,
     JsonValue,
+    LinguisticToken,
     OverrideScope,
     PreparationIssue,
     PreparationProfile,
     PreparationResult,
     PreparationStats,
+    PreparedRun,
     PreparedUnit,
     ProtectedSpan,
     SentenceSpan,
+    SourceOutputMap,
     SpeechOverride,
     SpokenChange,
     TextChunk,
     TextUnit,
     UnitContext,
 )
-from .preparation import apply_changes, prepare_text, prepare_units, split_prepared_text
+from .preparation import (
+    apply_changes,
+    prepare_run,
+    prepare_text,
+    prepare_units,
+    split_prepared_text,
+)
 from .qa import check_units
 from .reproducibility import (
     override_fingerprint,
@@ -51,6 +60,7 @@ __all__ = [
     "InvalidUnitError",
     "JsonScalar",
     "JsonValue",
+    "LinguisticToken",
     "LexicalFinding",
     "LexicalOccurrence",
     "LexicalReviewResult",
@@ -62,17 +72,20 @@ __all__ = [
     "PreparationProfile",
     "PreparationResult",
     "PreparationStats",
+    "PreparedRun",
     "PreparedUnit",
     "ProtectedSpan",
     "SentenceSpan",
     "SpeechOverride",
     "SpokenChange",
+    "SourceOutputMap",
     "TTSReadyError",
     "TextChunk",
     "TextUnit",
     "UnitContext",
     "__version__",
     "apply_changes",
+    "prepare_run",
     "check_units",
     "context_for_change",
     "override_fingerprint",

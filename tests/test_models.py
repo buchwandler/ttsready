@@ -4,10 +4,14 @@ from ttsready.errors import InvalidUnitError, MappingError, OverrideConflictErro
 from ttsready.identifiers import source_change_id, stable_id
 from ttsready.models import (
     OverrideScope,
+    PreparationIssue,
     PreparationProfile,
     PreparationStats,
+    PreparedRun,
     ProtectedSpan,
+    SourceOutputMap,
     SpeechOverride,
+    SpokenChange,
     TextUnit,
 )
 
@@ -83,3 +87,45 @@ def test_error_hierarchy():
     assert issubclass(MappingError, PreparationError)
     assert issubclass(OverrideConflictError, PreparationError)
     assert issubclass(InvalidUnitError, PreparationError)
+
+
+def test_prepared_run_validates_changes_and_exposes_changed_and_warnings():
+    change = SpokenChange(
+        id="change",
+        unit_id="run",
+        source_start=0,
+        source_end=1,
+        output_start=0,
+        output_end=4,
+        source="x",
+        replacement="word",
+    )
+    issue = PreparationIssue(
+        code="spokenform.warning",
+        severity="warning",
+        unit_id="run",
+        source_start=None,
+        source_end=None,
+        text=None,
+        message="notice",
+    )
+    source_map = SourceOutputMap(1, 4, (0, 4), (4, 4), (0, 0, 0, 0, 1), (1, 1, 1, 1, 1))
+    prepared = PreparedRun("run", "x", "word", "en-US", (change,), (issue,), source_map)
+    assert prepared.changed
+    assert prepared.warnings == ("notice",)
+
+
+def test_prepared_run_rejects_unreconstructable_or_foreign_changes():
+    source_map = SourceOutputMap.identity(2)
+    foreign = SpokenChange(
+        id="change",
+        unit_id="other",
+        source_start=0,
+        source_end=1,
+        output_start=0,
+        output_end=1,
+        source="a",
+        replacement="b",
+    )
+    with pytest.raises(ValueError, match="different run"):
+        PreparedRun("run", "ab", "bb", "en-US", (foreign,), (), source_map)
