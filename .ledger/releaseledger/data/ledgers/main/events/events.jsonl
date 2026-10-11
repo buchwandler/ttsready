@@ -50,3 +50,5 @@
 {"data":{"kind":"docs","status":"accepted"},"entry_id":"entry-0005","event":"entry.added","event_id":"event-0050","record_revisions":{"entry:0.2.2/entry-0005":1,"release:0.2.2":6},"release_version":"0.2.2","schema_version":2}
 {"data":{"kind":"quality","status":"accepted"},"entry_id":"entry-0006","event":"entry.added","event_id":"event-0051","record_revisions":{"entry:0.2.2/entry-0006":1,"release:0.2.2":7},"release_version":"0.2.2","schema_version":2}
 {"data":{"kind":"added","status":"accepted"},"entry_id":"entry-0007","event":"entry.added","event_id":"event-0052","record_revisions":{"entry:0.2.2/entry-0007":1,"release:0.2.2":8},"release_version":"0.2.2","schema_version":2}
+{"data":{"released_at":"2026-10-11"},"event":"release.finalized","event_id":"event-0053","record_revisions":{"release:0.2.2":9},"release_version":"0.2.2","schema_version":2}
+{"data":{"status":"planned"},"event":"release.created","event_id":"event-0054","record_revisions":{"release:0.2.3":1},"release_version":"0.2.3","schema_version":2}
