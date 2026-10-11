@@ -3,21 +3,21 @@ schema_version: 2
 object_type: release
 versioning:
   schema_version: 1
-  revision: 4
+  revision: 6
 version: 0.2.1
-status: planned
+status: released
 history_state: curated
 title: TTSReady 0.2.1
-released_at: null
+released_at: "2026-10-11"
 previous_version: 0.2.0
 cancel_reason: null
 superseded_by: null
 changelog_file: docs/changelog.md
 boundary_ref: null
 source_refs:
-- tl:task-0009
+  - tl:task-0009
 source_count: null
-entry_count: 2
+entry_count: 1
 artifact_count: 0
 git_base_ref: null
 git_base_sha: null
