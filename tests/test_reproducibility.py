@@ -1,6 +1,7 @@
 from dataclasses import replace
 
 from ttsready import (
+    LinguisticToken,
     OverrideScope,
     PreparationProfile,
     SpeechOverride,
@@ -27,7 +28,7 @@ def test_profile_and_override_fingerprints_capture_policy():
 
 
 def test_runtime_fingerprint_selects_only_semantic_runtime_versions():
-    base = {"ttsready": "0.2.0", "spokenform": "0.4.6", "phrasplit": "0.3.9"}
+    base = {"ttsready": "test-version", "spokenform": "0.4.6", "phrasplit": "0.3.9"}
     assert runtime_fingerprint(base) == runtime_fingerprint({**base, "unrelated": "9"})
     assert runtime_fingerprint(base) != runtime_fingerprint({**base, "spokenform": "0.4.7"})
 
@@ -38,7 +39,7 @@ def test_unit_and_prepared_fingerprints_are_content_sensitive():
     profile_hash = profile_fingerprint(PreparationProfile())
     override_hash = override_fingerprint(())
     runtime_hash = runtime_fingerprint(
-        {"ttsready": "0.2.0", "spokenform": "0.4.6", "phrasplit": "0.3.9"}
+        {"ttsready": "test-version", "spokenform": "0.4.6", "phrasplit": "0.3.9"}
     )
     assert unit_fingerprint(
         unit,
@@ -58,3 +59,32 @@ def test_unit_and_prepared_fingerprints_are_content_sensitive():
         overrides=(SpeechOverride("kg", "kilograms", scope=OverrideScope("unit", "u1")),),
     )
     assert prepared_fingerprint(result.units) != prepared_fingerprint(changed.units)
+
+
+def test_linguistic_tokens_change_unit_fingerprint_but_empty_hints_preserve_legacy_hash():
+    unit = TextUnit("u1", "2 kg", "en-US")
+    kwargs = {
+        "profile_fingerprint": "pf",
+        "override_fingerprint": "of",
+        "runtime_fingerprint": "rf",
+    }
+
+    assert unit_fingerprint(unit, **kwargs) == (
+        "8237afcd63fd71127ab9ba4d9ed96a58e926fee10d63137d61413e8629a65be5"
+    )
+
+    first = TextUnit(
+        "u1",
+        "2 kg",
+        "en-US",
+        linguistic_tokens=(LinguisticToken(0, 1, text="2", pos="NUM"),),
+    )
+    second = TextUnit(
+        "u1",
+        "2 kg",
+        "en-US",
+        linguistic_tokens=(LinguisticToken(0, 1, text="2", pos="NOUN"),),
+    )
+
+    assert unit_fingerprint(first, **kwargs) != unit_fingerprint(unit, **kwargs)
+    assert unit_fingerprint(first, **kwargs) != unit_fingerprint(second, **kwargs)

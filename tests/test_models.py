@@ -3,6 +3,7 @@ import pytest
 from ttsready.errors import InvalidUnitError, MappingError, OverrideConflictError, PreparationError
 from ttsready.identifiers import source_change_id, stable_id
 from ttsready.models import (
+    LinguisticToken,
     OverrideScope,
     PreparationIssue,
     PreparationProfile,
@@ -137,3 +138,33 @@ def test_spoken_change_preserves_language_and_rejects_non_string():
     assert change.language == "en_US"
     with pytest.raises(TypeError, match="language"):
         SpokenChange("change", "unit", 0, 1, 0, 1, "x", "y", language=123)
+
+
+def test_text_unit_normalizes_and_validates_provider_neutral_linguistic_tokens():
+    unit = TextUnit(
+        "u",
+        "abc def",
+        "en-US",
+        linguistic_tokens=(
+            LinguisticToken(4, 7, text="def", pos="NOUN"),
+            LinguisticToken(0, 3, text="abc", pos="ADJ"),
+        ),
+    )
+
+    assert [(token.start, token.end) for token in unit.linguistic_tokens] == [(0, 3), (4, 7)]
+
+    with pytest.raises(InvalidUnitError, match="outside"):
+        TextUnit("u", "abc", "en", linguistic_tokens=(LinguisticToken(0, 4),))
+    with pytest.raises(InvalidUnitError, match="overlap"):
+        TextUnit(
+            "u",
+            "abcd",
+            "en",
+            linguistic_tokens=(LinguisticToken(0, 3), LinguisticToken(2, 4)),
+        )
+    with pytest.raises(InvalidUnitError, match="does not match"):
+        TextUnit("u", "abc", "en", linguistic_tokens=(LinguisticToken(0, 3, text="xyz"),))
+    with pytest.raises(InvalidUnitError, match="only LinguisticToken"):
+        TextUnit("u", "abc", "en", linguistic_tokens=(object(),))
+    with pytest.raises(InvalidUnitError, match="iterable"):
+        TextUnit("u", "abc", "en", linguistic_tokens=None)

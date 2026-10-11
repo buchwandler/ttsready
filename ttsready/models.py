@@ -6,7 +6,7 @@ import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 JsonScalar = str | int | float | bool | None
 JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
@@ -78,6 +78,7 @@ class TextUnit:
     role: str = "prose"
     protected_spans: tuple[ProtectedSpan, ...] = ()
     metadata: Mapping[str, JsonValue] = field(default_factory=dict)
+    linguistic_tokens: tuple[LinguisticToken, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.id, str) or not self.id:
@@ -102,6 +103,14 @@ class TextUnit:
             previous_end = span.end
         object.__setattr__(self, "protected_spans", spans)
         object.__setattr__(self, "metadata", _json_mapping(self.metadata, "metadata"))
+
+        from .linguistic import validate_linguistic_tokens
+
+        object.__setattr__(
+            self,
+            "linguistic_tokens",
+            validate_linguistic_tokens(self.text, self.linguistic_tokens),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -392,12 +401,12 @@ class SourceOutputMap:
             raise TypeError("source/output map data must be a mapping")
         try:
             return cls(
-                source_length=data["source_length"],
-                output_length=data["output_length"],
-                source_left=tuple(data["source_left"]),
-                source_right=tuple(data["source_right"]),
-                output_left=tuple(data["output_left"]),
-                output_right=tuple(data["output_right"]),
+                source_length=cast(int, data["source_length"]),
+                output_length=cast(int, data["output_length"]),
+                source_left=tuple(cast(Iterable[int], data["source_left"])),
+                source_right=tuple(cast(Iterable[int], data["source_right"])),
+                output_left=tuple(cast(Iterable[int], data["output_left"])),
+                output_right=tuple(cast(Iterable[int], data["output_right"])),
             )
         except KeyError as exc:
             raise ValueError(f"source/output map data is missing {exc.args[0]!r}") from exc

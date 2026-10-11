@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import pytest
+from spokenform import TokenAnnotation
 from spokenform.mapping import OffsetMap
 
 from ttsready.errors import (
@@ -9,7 +10,7 @@ from ttsready.errors import (
     OverrideConflictError,
     PreparationError,
 )
-from ttsready.models import OverrideScope, ProtectedSpan, SpeechOverride
+from ttsready.models import LinguisticToken, OverrideScope, ProtectedSpan, SpeechOverride
 from ttsready.preparation import apply_changes, prepare_text
 
 
@@ -169,3 +170,27 @@ def test_change_id_does_not_depend_on_override_replacement():
     second = prepare_text("ART", language="en-US", overrides=(SpeechOverride("ART", "two"),))
 
     assert first.changes[0].id == second.changes[0].id
+
+
+def test_prepare_text_accepts_and_forwards_linguistic_tokens(monkeypatch):
+    observed = {}
+
+    def backend(text, **kwargs):
+        observed.update(kwargs)
+        return SimpleNamespace(
+            spoken_text=text,
+            source_replacements=(),
+            warnings=(),
+            offset_map=OffsetMap.identity(len(text)),
+        )
+
+    monkeypatch.setattr("ttsready.preparation.spokenform.prepare_language", backend)
+    prepare_text(
+        "cats",
+        language="en-US",
+        linguistic_tokens=(LinguisticToken(0, 4, text="cats", pos="NOUN"),),
+    )
+
+    assert len(observed["annotations"]) == 1
+    assert isinstance(observed["annotations"][0], TokenAnnotation)
+    assert observed["annotations"][0].pos == "NOUN"

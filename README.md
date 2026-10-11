@@ -18,6 +18,10 @@ The runtime dependencies are `spokenform>=0.4.5,<0.5` and `phrasplit>=0.3.9,<1`.
 python -m pip install 'ttsready[lexical]'
 ```
 
+## Release versioning
+
+`setuptools-scm` derives TTSReady versions from Git tags and writes `ttsready/_version.py` during builds. Release tags use `vX.Y.Z`. A bare source tree without generated SCM metadata reports the neutral version `0+unknown`; release artifacts must derive their version from the tag.
+
 ## Quickstart
 
 ```python
@@ -31,6 +35,23 @@ for change in prepared.changes:
 ```
 
 `prepare_text()` prepares one unit and returns a `PreparedUnit`. Use `prepare_units()` when you have multiple caller-owned units, possibly with different languages, roles, protected spans, or metadata. See [docs/quickstart.md](docs/quickstart.md) and the runnable [API example](examples/basic_prepare.py).
+
+## Lexical review
+
+Use `review_lexicon()` to collect pronunciation-review candidates from caller-owned units. The provider is optional; for example, heuristic candidates can be collected without downloading or loading a dataset:
+
+```python
+from ttsready import TextUnit, review_lexicon
+
+review = review_lexicon(
+    (TextUnit("chapter-1", "We met Siobhan.", "en"),),
+    include_all_tokens=True,
+)
+for finding in review.findings:
+    print(finding.surface, finding.reasons)
+```
+
+Install `ttsready[lexical]` to use the optional Lexhint integration with an explicitly constructed provider. See the [lexical review guide](docs/lexical-review.md) for findings, offsets, filters, and provider behavior.
 
 ### Compiler-facing run API
 
@@ -58,6 +79,10 @@ Hints are provider-neutral and source-relative to the supplied run; TTSReady nev
 - `prepare_text()` and `prepare_units()` accept immutable `TextUnit` records; `SpeechOverride` values express global, unit-scoped, or exact-occurrence pronunciation policy.
 - `PreparedRun` returns exact `SourceOutputMap` boundary mappings; review-oriented results add context, QA, fingerprints, and aggregate statistics.
 - Existing result JSON serialization and fingerprints are pure; run maps are in-memory/diagnostic values and persistence remains the caller's responsibility.
+- `TextUnit` may carry validated provider-neutral linguistic-token hints; `prepare_units()` and `prepare_text()` forward them without provider loading. Bulk preparation optionally emits synchronous observation-only progress events and remains silent itself.
+
+- `review_lexicon()` exposes provider-neutral lexical review; use [the lexical review guide](docs/lexical-review.md) for candidate reasons, filtering, and optional caller-owned evidence providers.
+- `split_prepared_text()` chunks supplied text at sentence-aware boundaries while preserving exact source slices; see [Python API](docs/python-api.md).
 
 ```python
 from ttsready import TextUnit, prepare_units
@@ -78,6 +103,7 @@ for unit in result.units:
 - [Installation](docs/installation.md)
 - [Quickstart](docs/quickstart.md)
 - [Python API](docs/python-api.md)
+- [Lexical review](docs/lexical-review.md)
 - [Overrides](docs/overrides.md)
 - [Residual QA](docs/qa.md)
 - [Reproducibility and serialization](docs/reproducibility.md)

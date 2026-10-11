@@ -13,6 +13,7 @@ quickstart
 python-api
 overrides
 qa
+lexical-review
 reproducibility
 ownership-boundary
 migration

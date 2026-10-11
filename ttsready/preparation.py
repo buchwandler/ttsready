@@ -12,6 +12,7 @@ import spokenform
 
 from .errors import InvalidUnitError, MappingError, PreparationError
 from .identifiers import source_change_id
+from .linguistic import validate_linguistic_tokens
 from .models import (
     LinguisticToken,
     PreparationIssue,
@@ -31,6 +32,11 @@ from .models import (
 )
 from .overrides import overlaps as _overlaps
 from .overrides import resolve_overrides
+from .progress import (
+    PreparationProgressCallback,
+    PreparationProgressEvent,
+    notify,
+)
 from .reproducibility import (
     override_fingerprint,
     prepared_fingerprint,
@@ -216,32 +222,6 @@ class _BackendPreparation:
     source_map: SourceOutputMap
 
 
-def _validate_linguistic_tokens(
-    text: str,
-    tokens: Iterable[LinguisticToken],
-) -> tuple[LinguisticToken, ...]:
-    if not isinstance(text, str):
-        raise InvalidUnitError("linguistic token input text must be a string")
-    try:
-        supplied = tuple(tokens)
-    except TypeError as exc:
-        raise InvalidUnitError("linguistic_tokens must be iterable") from exc
-    if any(not isinstance(token, LinguisticToken) for token in supplied):
-        raise InvalidUnitError("linguistic_tokens must contain only LinguisticToken values")
-
-    ordered = tuple(sorted(supplied, key=lambda token: (token.start, token.end)))
-    previous_end = 0
-    for token in ordered:
-        if token.end > len(text):
-            raise InvalidUnitError("linguistic token is outside the supplied run text")
-        if token.start < previous_end:
-            raise InvalidUnitError("linguistic tokens must not overlap")
-        if token.text is not None and text[token.start : token.end] != token.text:
-            raise InvalidUnitError("linguistic token text does not match the supplied run text")
-        previous_end = token.end
-    return ordered
-
-
 def _spokenform_annotations(
     text: str,
     tokens: tuple[LinguisticToken, ...],
@@ -341,6 +321,11 @@ def _prepare_unit(
         profile,
         strict=strict,
         protected_spans=backend_spans,
+        annotations=(
+            _spokenform_annotations(unit.text, unit.linguistic_tokens)
+            if unit.linguistic_tokens
+            else None
+        ),
         preserve_run_boundaries=False,
     )
     backend_text = backend_result.spoken_text
@@ -477,6 +462,7 @@ def prepare_text(
     metadata: Mapping[str, Any] | None = None,
     profile: PreparationProfile | None = None,
     strict: bool = False,
+    linguistic_tokens: Iterable[LinguisticToken] = (),
 ) -> PreparedUnit:
     """Prepare one caller-owned text unit without reading or writing any files."""
     unit = TextUnit(
@@ -484,8 +470,12 @@ def prepare_text(
         text=text,
         language=language,
         role=role,
-        protected_spans=tuple(protected_spans),
+        protected_spans=tuple(
+            span if isinstance(span, ProtectedSpan) else ProtectedSpan(*span)
+            for span in protected_spans
+        ),
         metadata=metadata or {},
+        linguistic_tokens=tuple(linguistic_tokens),
     )
     return _prepare_unit(
         unit,
@@ -515,7 +505,10 @@ def prepare_run(
         id=unit_id,
         text=text,
         language=language,
-        protected_spans=tuple(protected_spans),
+        protected_spans=tuple(
+            span if isinstance(span, ProtectedSpan) else ProtectedSpan(*span)
+            for span in protected_spans
+        ),
     )
     effective_profile = PreparationProfile() if profile is None else profile
     if not isinstance(effective_profile, PreparationProfile):
@@ -523,7 +516,7 @@ def prepare_run(
     if not isinstance(preserve_run_boundaries, bool):
         raise TypeError("preserve_run_boundaries must be a bool")
 
-    tokens = _validate_linguistic_tokens(unit.text, linguistic_tokens)
+    tokens = validate_linguistic_tokens(unit.text, linguistic_tokens)
     annotations = _spokenform_annotations(unit.text, tokens) if tokens else None
     backend = _prepare_backend(
         unit,
@@ -546,7 +539,7 @@ def prepare_run(
             kind,
             rule,
             domain,
-            language,
+            change_language,
             provenance,
         ) = _change_from_backend(unit, normalized)
         output_start = start + delta
@@ -571,7 +564,7 @@ def prepare_run(
                 rule=rule,
                 recognition_domain=domain,
                 provenance=provenance,
-                language=language,
+                language=change_language,
             )
         )
         delta += len(replacement) - (end - start)
@@ -593,6 +586,7 @@ def prepare_units(
     overrides: Iterable[SpeechOverride] = (),
     profile: PreparationProfile | None = None,
     strict: bool = False,
+    on_progress: PreparationProgressCallback | None = None,
 ) -> PreparationResult:
     """Prepare ordered caller-owned units with pure aggregate fingerprints."""
     unit_list = tuple(units)
@@ -608,9 +602,34 @@ def prepare_units(
     if not isinstance(effective_profile, PreparationProfile):
         raise PreparationError("profile must be a PreparationProfile")
 
-    prepared = tuple(
-        _prepare_unit(unit, override_list, effective_profile, strict=strict) for unit in unit_list
-    )
+    prepared_list: list[PreparedUnit] = []
+    total = len(unit_list)
+    for index, unit in enumerate(unit_list):
+        notify(
+            on_progress,
+            PreparationProgressEvent(
+                kind="unit.started",
+                completed=index,
+                total=total,
+                unit_id=unit.id,
+                language=unit.language,
+                role=unit.role,
+            ),
+        )
+        prepared_unit = _prepare_unit(unit, override_list, effective_profile, strict=strict)
+        prepared_list.append(prepared_unit)
+        notify(
+            on_progress,
+            PreparationProgressEvent(
+                kind="unit.completed",
+                completed=index + 1,
+                total=total,
+                unit_id=unit.id,
+                language=unit.language,
+                role=unit.role,
+            ),
+        )
+    prepared = tuple(prepared_list)
     changes = tuple(change for unit in prepared for change in unit.changes)
     issues = tuple(issue for unit in prepared for issue in unit.issues)
     stages = Counter(stage for change in changes for stage in change.stages)

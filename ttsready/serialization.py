@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
 from .models import (
     PreparationIssue,
@@ -91,6 +91,7 @@ def _unit_context(data: Mapping[str, Any] | None) -> UnitContext | None:
 
 
 def _prepared_unit(data: Mapping[str, Any]) -> PreparedUnit:
+    context = cast(UnitContext, _unit_context(data.get("context")))
     return PreparedUnit(
         unit_id=str(data["unit_id"]),
         source_text=str(data["source_text"]),
@@ -99,7 +100,7 @@ def _prepared_unit(data: Mapping[str, Any]) -> PreparedUnit:
         role=str(data["role"]),
         changes=tuple(_change(item) for item in data.get("changes", ())),
         issues=tuple(_issue(item) for item in data.get("issues", ())),
-        context=_unit_context(data.get("context")),
+        context=context,
     )
 
 

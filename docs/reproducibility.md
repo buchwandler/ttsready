@@ -12,6 +12,10 @@ print(result.runtime_fingerprint)
 print(result.prepared_fingerprint)
 ```
 
+## Runtime versions
+
+`ttsready.__version__` is the package's public runtime version. Builds derive it from Git tags with `setuptools-scm`, which generates `ttsready/_version.py` for installed distributions. A source checkout without generated version metadata reports `0+unknown`; release artifacts must carry the exact tag-derived version, never this fallback. `runtime_versions()` returns the TTSReady, Spokenform, and Phrasplit versions used by the runtime fingerprint.
+
 The runtime fingerprint covers `ttsready`, `spokenform`, and `phrasplit`. The prepared-output fingerprint covers ordered unit IDs and their spoken text. `profile_fingerprint()`, `override_fingerprint()`, `runtime_fingerprint()`, and `unit_fingerprint()` are available for caller-defined verification or record layouts. Change IDs identify the source occurrence (`unit_id`, source span, and source text), not the replacement value.
 
 `prepare_run()` is a compiler-facing in-memory result and does not return a `PreparationResult` fingerprint bundle. `SourceOutputMap.to_dict()`/`from_dict()` support diagnostics and tests only; maps are not inserted into the existing `ttsready.preparation.v2` result schema. Linguistic hints and run-boundary flags do not change the existing profile, override, or prepared-unit fingerprint semantics.

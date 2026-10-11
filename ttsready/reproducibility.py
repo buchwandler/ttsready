@@ -21,9 +21,9 @@ def _fingerprint(value: Any) -> str:
 def runtime_versions() -> dict[str, str]:
     """Return only ttsready's semantic runtime versions."""
     try:
-        from ._version import version as ttsready_version
+        from . import __version__ as ttsready_version
     except (ImportError, AttributeError):  # pragma: no cover - source-tree fallback
-        ttsready_version = "0.2.0"
+        ttsready_version = "0+unknown"
     versions = {"ttsready": str(ttsready_version)}
     for package in ("spokenform", "phrasplit"):
         try:
@@ -87,21 +87,33 @@ def unit_fingerprint(
     runtime_fingerprint: str,
 ) -> str:
     """Fingerprint one caller unit and the policies/runtime used to process it."""
-    return _fingerprint(
-        {
-            "id": unit.id,
-            "text_sha256": text_sha256(unit.text),
-            "language": unit.language,
-            "role": unit.role,
-            "protected_spans": [
-                {"start": span.start, "end": span.end, "reason": span.reason}
-                for span in unit.protected_spans
-            ],
-            "profile_fingerprint": profile_fingerprint,
-            "override_fingerprint": override_fingerprint,
-            "runtime_fingerprint": runtime_fingerprint,
-        }
-    )
+    payload: dict[str, Any] = {
+        "id": unit.id,
+        "text_sha256": text_sha256(unit.text),
+        "language": unit.language,
+        "role": unit.role,
+        "protected_spans": [
+            {"start": span.start, "end": span.end, "reason": span.reason}
+            for span in unit.protected_spans
+        ],
+        "profile_fingerprint": profile_fingerprint,
+        "override_fingerprint": override_fingerprint,
+        "runtime_fingerprint": runtime_fingerprint,
+    }
+    if unit.linguistic_tokens:
+        payload["linguistic_tokens"] = [
+            {
+                "start": token.start,
+                "end": token.end,
+                "text": token.text,
+                "pos": token.pos,
+                "tag": token.tag,
+                "lemma": token.lemma,
+                "language": token.language,
+            }
+            for token in unit.linguistic_tokens
+        ]
+    return _fingerprint(payload)
 
 
 def prepared_fingerprint(units: Iterable[PreparedUnit]) -> str:

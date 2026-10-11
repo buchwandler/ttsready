@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=80"]
+requires = ["setuptools>=80", "setuptools-scm[toml]>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "ttsready"
-version = "0.2.1"
+dynamic = ["version"]
 description = "A source-neutral API for preparing text for speech."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -34,7 +34,9 @@ dev = [
   "setuptools>=80",
   "pytest>=8,<10",
   "ruff>=0.16,<1",
+  "mypy>=1.11",
   "twine>=6,<7",
+  "tomli>=2.0.1; python_version < '3.11'",
 ]
 lexical = ["lexhint>=0.1.2,<0.3.0"]
 
@@ -56,9 +58,26 @@ addopts = "-q"
 pythonpath = ["."]
 
 [tool.ruff]
-extend-exclude = ["01_ttsready_api_only_detailed_implementation_brief.md"]
+extend-exclude = [
+  "01_ttsready_api_only_detailed_implementation_brief.md",
+  "03_ttsready_dynamic_versioning_public_api_implementation_brief-1.md",
+]
 target-version = "py310"
 line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.setuptools_scm]
+version_file = "ttsready/_version.py"
+fallback_version = "0+unknown"
+
+[tool.mypy]
+python_version = "3.10"
+packages = ["ttsready"]
+check_untyped_defs = true
+disallow_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+ignore_missing_imports = true

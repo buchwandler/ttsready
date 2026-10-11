@@ -1,3 +1,4 @@
+import ttsready
 from ttsready import (
     PreparationProfile,
     ProtectedSpan,
@@ -71,3 +72,7 @@ def test_runtime_fingerprint_uses_semantic_runtime_and_prepared_digest_is_ordere
     assert prepared_fingerprint(first.units) != prepared_fingerprint(tuple(reversed(first.units)))
     changed = prepare_units((TextUnit("a", "3 kg", "en-US"), TextUnit("b", "2 kg", "en-US")))
     assert prepared_fingerprint(first.units) != prepared_fingerprint(changed.units)
+
+
+def test_runtime_versions_uses_public_ttsready_version():
+    assert runtime_versions()["ttsready"] == ttsready.__version__

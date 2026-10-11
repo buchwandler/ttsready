@@ -1,6 +1,28 @@
 # Python API
 
-The public API is exported from `ttsready`. The two preparation entry points accept plain text (or text-unit records) and explicit language tags; they do not accept paths or format-specific document objects.
+The supported Python API is the set exported from the root `ttsready` package via `ttsready.__all__`. It is source-neutral: callers provide text and explicit language values, and TTSReady does not accept paths or format-specific document objects.
+
+The public preparation surface has three levels: `prepare_run()`, `prepare_text()`, and `prepare_units()`.
+
+## Public API inventory
+
+The root `ttsready.__all__` is the supported API boundary. The names below are the intentional exports; a helper that is available only from an implementation submodule is not thereby a supported public API.
+
+| Family                       | Root exports                                                                                                                                                                                |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Version                      | `__version__`                                                                                                                                                                               |
+| JSON and input/policy models | `JsonScalar`, `JsonValue`, `LinguisticToken`, `TextUnit`, `ProtectedSpan`, `PreparationProfile`, `OverrideScope`, `SpeechOverride`                                                          |
+| Preparation                  | `prepare_run()`, `prepare_text()`, `prepare_units()`, `apply_changes()`, `split_prepared_text()`                                                                                            |
+| Results and mapping          | `SpokenChange`, `PreparationIssue`, `SourceOutputMap`, `PreparedRun`, `PreparedUnit`, `PreparationStats`, `PreparationResult`, `TextChunk`                                                  |
+| Context                      | `SentenceSpan`, `UnitContext`, `ChangeContext`, `context_for_change()`                                                                                                                      |
+| QA                           | `check_units()`; see [residual QA](qa.md)                                                                                                                                                   |
+| Lexical review               | `LexicalOccurrence`, `LexicalFinding`, `LexicalReviewResult`, `review_lexicon()`; see [lexical review](lexical-review.md)                                                                   |
+| Reproducibility              | `runtime_versions()`, `profile_fingerprint()`, `override_fingerprint()`, `runtime_fingerprint()`, `unit_fingerprint()`, `prepared_fingerprint()`; see [reproducibility](reproducibility.md) |
+| Serialization                | `result_to_dict()`, `result_from_dict()`; see [reproducibility and serialization](reproducibility.md)                                                                                       |
+| Bulk progress                | `PreparationProgressCallback`, `PreparationProgressEvent`, `PreparationProgressKind`                                                                                                        |
+| Errors                       | `TTSReadyError`, `PreparationError`, `MappingError`, `OverrideConflictError`, `InvalidUnitError`                                                                                            |
+
+Input models describe caller-owned text, language, policy, and optional source-relative hints. Result models describe in-memory prepared output, mappings, context, QA, statistics, lexical findings, or progress observations. `JsonScalar` and `JsonValue` identify the JSON-safe metadata value types. See the sections below and the linked guides for behavior and examples.
 
 ## Prepare one string
 
@@ -69,6 +91,21 @@ result.prepared_fingerprint  # digest of ordered prepared outputs
 
 Unit IDs must be unique within one result. A unit's language is passed explicitly to `spokenform`; it is not inferred from a document. The caller controls the ID namespace and preserves any format-specific structure outside this library.
 
+`TextUnit.linguistic_tokens` accepts source-relative `LinguisticToken` hints. It normalizes them by `(start, end)` and validates bounds, non-overlap, token text, and provider-neutral type. `prepare_units()` and `prepare_text()` forward supplied hints to Spokenform without asking TTSReady to load an NLP provider. Units without hints keep the original behavior and fingerprint.
+
+`prepare_units(..., on_progress=callback)` optionally reports synchronous `PreparationProgressEvent` values (`unit.started` and `unit.completed`) with completed/total counts and unit ID, language, and role. Events are observational, are not serialized, and callback exceptions propagate. TTSReady does not print or render progress.
+
+```python
+from ttsready import PreparationProgressEvent, TextUnit, prepare_units
+
+
+def report(event: PreparationProgressEvent) -> None:
+    print(event.kind, event.completed, event.total, event.unit_id)
+
+
+result = prepare_units((TextUnit("chapter-1", "2 kg", "en-US"),), on_progress=report)
+```
+
 ## Protected spans and profiles
 
 Protected spans are half-open offsets into the exact input string. They are not transformed, and an overlapping override is reported rather than applied:
@@ -100,6 +137,38 @@ for change in run.changes:
 ```
 
 A `PreparedUnit` contains sentence context for both source and spoken text. For a specific change in an aggregate result, `context_for_change(result, change_id)` returns its unit and overlapping source/spoken sentences.
+
+## Text chunking
+
+`split_prepared_text(text, *, language, max_chars) -> tuple[TextChunk, ...]` chunks the string supplied by the caller; it does not prepare, normalize, or otherwise transform it. Splits prefer sentence boundaries and fall back to smaller pieces as needed to satisfy the character limit.
+
+- Every `TextChunk.text` is an exact slice of the original string, and `start`/`end` are source-relative half-open offsets.
+- `part` is zero-based; chunks concatenate back to the exact input and each chunk has at most `max_chars` characters.
+- Empty input returns `()`. A `max_chars` value below 1 raises `ValueError`.
+
+```python
+from ttsready import split_prepared_text
+
+source = "First sentence. Second sentence."
+chunks = split_prepared_text(source, language="en-US", max_chars=20)
+assert "".join(chunk.text for chunk in chunks) == source
+```
+
+## Public models and errors
+
+Input objects include `TextUnit`, `ProtectedSpan`, `LinguisticToken`, `PreparationProfile`, `OverrideScope`, and `SpeechOverride`. Returned objects include `PreparedRun`, `PreparedUnit`, `PreparationResult`, `SpokenChange`, `PreparationIssue`, `SourceOutputMap`, `PreparationStats`, `TextChunk`, `SentenceSpan`, `UnitContext`, and `ChangeContext`. Lexical review and progress return their own result/event types, described in the [lexical review guide](lexical-review.md) and the progress section above.
+
+| Exception               | Typical origin                                             |
+| ----------------------- | ---------------------------------------------------------- |
+| `TTSReadyError`         | Base for TTSReady contract and preparation failures        |
+| `PreparationError`      | A preparation operation cannot produce a consistent result |
+| `MappingError`          | Backend source/output mappings fail verification           |
+| `OverrideConflictError` | Equally ranked overlapping overrides disagree              |
+| `InvalidUnitError`      | A text unit or its spans violate the public contract       |
+
+`PreparationError` derives from `TTSReadyError`; the other specific preparation exceptions derive from `PreparationError`. Raw model construction may raise ordinary `ValueError` or `TypeError`; those errors are not universally converted to TTSReady-specific exceptions.
+
+`__version__` is exported from the root package. Its SCM-derived and neutral-fallback semantics are documented under [runtime versions](reproducibility.md).
 
 ## Serialization
 

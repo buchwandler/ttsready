@@ -22,15 +22,16 @@ SourceOutputMap
 - Reading and writing files, network or database access, and serialization storage.
 - Parsing SSMD, Markdown, HTML, subtitles, books, or any other source format.
 - Mapping source structure and identifiers to ordered `TextUnit` values or source-relative run slices.
-- Loading NLP providers, selecting models, detecting language, and segmenting mixed-language runs or sentences.
+- Loading NLP providers, selecting models, detecting language, and segmenting mixed-language runs or sentences. TTSReady may consume supplied provider-neutral hints but never loads a provider.
 - Choosing output formats, rendering, audio generation, and application/CLI behavior.
 - Persisting overrides, reports, fingerprints, locks, or review decisions.
 
 ## ttsready owns
 
-- Direct `spokenform` integration, provider-neutral annotation conversion, generic normalization policy forwarding, and replacement validation through one internal adapter.
+- Direct `spokenform` integration, provider-neutral linguistic-hint validation and annotation conversion, generic normalization policy forwarding, and replacement validation through one internal adapter.
 - Source-neutral `TextUnit`, protected-span, profile, and override models.
 - Exact run-level source/output maps, change provenance, generic issues, and the existing review-oriented context, aggregate statistics, QA, and fingerprints.
 - JSON-ready result conversion without performing I/O.
+- Optional synchronous source-neutral unit-progress callbacks that never write terminal output or alter preparation results.
 
 The boundary is deliberate: the same preparation API can be used by a command-line application, service, editor, batch converter, or test without adding those behaviors to this package. See [migration from 0.1.x](migration.md) for the breaking API change.

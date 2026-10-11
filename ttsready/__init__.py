@@ -5,7 +5,7 @@ from __future__ import annotations
 try:
     from ._version import version as __version__
 except (ImportError, AttributeError):  # pragma: no cover - bare source tree
-    __version__ = "0.2.1"
+    __version__ = "0+unknown"
 
 from .context import context_for_change
 from .errors import (
@@ -44,6 +44,11 @@ from .preparation import (
     prepare_units,
     split_prepared_text,
 )
+from .progress import (
+    PreparationProgressCallback,
+    PreparationProgressEvent,
+    PreparationProgressKind,
+)
 from .qa import check_units
 from .reproducibility import (
     override_fingerprint,
@@ -74,6 +79,9 @@ __all__ = [
     "PreparationStats",
     "PreparedRun",
     "PreparedUnit",
+    "PreparationProgressCallback",
+    "PreparationProgressEvent",
+    "PreparationProgressKind",
     "ProtectedSpan",
     "SentenceSpan",
     "SpeechOverride",
