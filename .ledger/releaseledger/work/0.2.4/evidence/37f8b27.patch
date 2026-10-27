@@ -1,0 +1,748 @@
+ .../data/ledgers/main/events/events.jsonl          |   2 +
+ .../main/releases/0.2.3/entries/entry-0001.md      |  25 ++
+ .../data/ledgers/main/releases/0.2.3/release.md    |   4 +-
+ README.md                                          |   4 +-
+ docs/changelog.md                                  |   4 +
+ docs/installation.md                               |   2 +-
+ docs/python-api.md                                 |  19 ++
+ pyproject.toml                                     |   2 +-
+ tests/test_packaging.py                            |   4 +-
+ tests/test_prepare_units.py                        | 223 +++++++++++++++-
+ ttsready/preparation.py                            | 282 ++++++++++++++++++++-
+ 11 files changed, 562 insertions(+), 9 deletions(-)
+
+diff --git a/.ledger/releaseledger/data/ledgers/main/events/events.jsonl b/.ledger/releaseledger/data/ledgers/main/events/events.jsonl
+index f8dd877..ff2cd54 100644
+--- a/.ledger/releaseledger/data/ledgers/main/events/events.jsonl
++++ b/.ledger/releaseledger/data/ledgers/main/events/events.jsonl
+@@ -52,3 +52,5 @@
+ {"data":{"kind":"added","status":"accepted"},"entry_id":"entry-0007","event":"entry.added","event_id":"event-0052","record_revisions":{"entry:0.2.2/entry-0007":1,"release:0.2.2":8},"release_version":"0.2.2","schema_version":2}
+ {"data":{"released_at":"2026-10-11"},"event":"release.finalized","event_id":"event-0053","record_revisions":{"release:0.2.2":9},"release_version":"0.2.2","schema_version":2}
+ {"data":{"status":"planned"},"event":"release.created","event_id":"event-0054","record_revisions":{"release:0.2.3":1},"release_version":"0.2.3","schema_version":2}
++{"data":{"kind":"added","status":"accepted"},"entry_id":"entry-0001","event":"entry.added","event_id":"event-0055","record_revisions":{"entry:0.2.3/entry-0001":1,"release:0.2.3":2},"release_version":"0.2.3","schema_version":2}
++{"data":{"added_source_refs":[],"fields":["summary"],"removed_source_refs":[],"source_refs_mode":"unchanged"},"entry_id":"entry-0001","event":"entry.updated","event_id":"event-0056","record_revisions":{"entry:0.2.3/entry-0001":2},"release_version":"0.2.3","schema_version":2}
+diff --git a/.ledger/releaseledger/data/ledgers/main/releases/0.2.3/entries/entry-0001.md b/.ledger/releaseledger/data/ledgers/main/releases/0.2.3/entries/entry-0001.md
+new file mode 100644
+index 0000000..33abb12
+--- /dev/null
++++ b/.ledger/releaseledger/data/ledgers/main/releases/0.2.3/entries/entry-0001.md
+@@ -0,0 +1,25 @@
++---
++schema_version: 2
++object_type: release_entry
++versioning:
++  schema_version: 1
++  revision: 2
++entry_id: entry-0001
++release_version: 0.2.3
++kind: added
++summary: Added preparation-set consistency for high-confidence initialism pronunciations
++status: accepted
++audience: null
++scopes: []
++source_refs:
++  - tl:task-0013
++paths:
++  - ttsready/preparation.py
++issues: []
++prs: []
++sources: []
++contributors: []
++breaking: false
++internal: false
++order: 1
++---
+diff --git a/.ledger/releaseledger/data/ledgers/main/releases/0.2.3/release.md b/.ledger/releaseledger/data/ledgers/main/releases/0.2.3/release.md
+index 4391382..2b21db4 100644
+--- a/.ledger/releaseledger/data/ledgers/main/releases/0.2.3/release.md
++++ b/.ledger/releaseledger/data/ledgers/main/releases/0.2.3/release.md
+@@ -3,7 +3,7 @@ schema_version: 2
+ object_type: release
+ versioning:
+   schema_version: 1
+-  revision: 1
++  revision: 2
+ version: 0.2.3
+ status: planned
+ history_state: curated
+@@ -16,7 +16,7 @@ changelog_file: docs/changelog.md
+ boundary_ref: null
+ source_refs: []
+ source_count: null
+-entry_count: 0
++entry_count: 1
+ artifact_count: 0
+ git_base_ref: null
+ git_base_sha: null
+diff --git a/README.md b/README.md
+index 12d6f84..1e22692 100644
+--- a/README.md
++++ b/README.md
+@@ -12,7 +12,7 @@ Python 3.10 or newer is required.
+ python -m pip install ttsready
+ ```
+
+-The runtime dependencies are `spokenform>=0.4.5,<0.5` and `phrasplit>=0.3.9,<1`. Install the optional lexical extra when you need its lexical-evidence integrations:
++The runtime dependencies are `spokenform>=0.4.6,<0.5` and `phrasplit>=0.3.9,<1`. Install the optional lexical extra when you need its lexical-evidence integrations:
+
+ ```bash
+ python -m pip install 'ttsready[lexical]'
+@@ -36,6 +36,8 @@ for change in prepared.changes:
+
+ `prepare_text()` prepares one unit and returns a `PreparedUnit`. Use `prepare_units()` when you have multiple caller-owned units, possibly with different languages, roles, protected spans, or metadata. See [docs/quickstart.md](docs/quickstart.md) and the runnable [API example](examples/basic_prepare.py).
+
++`prepare_units()` can carry a high-confidence initialism pronunciation established in one unit to exact occurrences in the same preparation set; isolated `prepare_text()` remains conservative. See [Python API](docs/python-api.md#preparation-set-initialism-consistency).
++
+ ## Lexical review
+
+ Use `review_lexicon()` to collect pronunciation-review candidates from caller-owned units. The provider is optional; for example, heuristic candidates can be collected without downloading or loading a dataset:
+diff --git a/docs/changelog.md b/docs/changelog.md
+index 333112f..af2c616 100644
+--- a/docs/changelog.md
++++ b/docs/changelog.md
+@@ -2,6 +2,10 @@
+
+ ## [0.2.3] - Unreleased
+
++### Added
++
++- Added preparation-set consistency for high-confidence initialism pronunciations
++
+ <!-- generated by releaseledger -->
+
+ ## [0.2.2] - 2026-10-11
+diff --git a/docs/installation.md b/docs/installation.md
+index 82190ca..3cc8119 100644
+--- a/docs/installation.md
++++ b/docs/installation.md
+@@ -6,7 +6,7 @@
+ python -m pip install ttsready
+ ```
+
+-The library's runtime dependencies are `spokenform>=0.4.5,<0.5` and `phrasplit>=0.3.9,<1`. The package does not install format parsers, file readers, a CLI framework, or an audio renderer.
++The library's runtime dependencies are `spokenform>=0.4.6,<0.5` and `phrasplit>=0.3.9,<1`. The package does not install format parsers, file readers, a CLI framework, or an audio renderer.
+
+ Install the optional `lexical` extra when using integrations that need the `lexhint` lexical-evidence package:
+
+diff --git a/docs/python-api.md b/docs/python-api.md
+index 54f5b6b..3ff8df5 100644
+--- a/docs/python-api.md
++++ b/docs/python-api.md
+@@ -91,6 +91,25 @@ result.prepared_fingerprint  # digest of ordered prepared outputs
+
+ Unit IDs must be unique within one result. A unit's language is passed explicitly to `spokenform`; it is not inferred from a document. The caller controls the ID namespace and preserves any format-specific structure outside this library.
+
++### Preparation-set initialism consistency
++
++Spokenform owns linguistic recognition: a high-confidence parenthesized initialism such as `(ART)` can establish `ART -> A R T`. TTSReady applies a separate, conservative consistency pass in `prepare_units()` so exact, case-sensitive occurrences of that source stem remain consistent across same-language units, including possessives:
++
++```python
++from ttsready import TextUnit, prepare_units
++
++result = prepare_units(
++    (
++        TextUnit("first", "(ART) was announced. ART’s module was ready.", "en-US"),
++        TextUnit("later", "Later ART checked it.", "en-US"),
++    )
++)
++[unit.spoken_text for unit in result.units]
++# ['(A R T) was announced. A R T’s module was ready.', 'Later A R T checked it.']
++```
++
++This is preparation-set consistency, not generic acronym detection. `prepare_text("ART is here", language="en-US")` remains conservative because it has no other unit or contextual seed to propagate. Explicit overrides, protected spans, and existing backend changes take precedence.
++
+ `TextUnit.linguistic_tokens` accepts source-relative `LinguisticToken` hints. It normalizes them by `(start, end)` and validates bounds, non-overlap, token text, and provider-neutral type. `prepare_units()` and `prepare_text()` forward supplied hints to Spokenform without asking TTSReady to load an NLP provider. Units without hints keep the original behavior and fingerprint.
+
+ `prepare_units(..., on_progress=callback)` optionally reports synchronous `PreparationProgressEvent` values (`unit.started` and `unit.completed`) with completed/total counts and unit ID, language, and role. Events are observational, are not serialized, and callback exceptions propagate. TTSReady does not print or render progress.
+diff --git a/pyproject.toml b/pyproject.toml
+index 332b491..88c105f 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -24,7 +24,7 @@ classifiers = [
+   "Topic :: Text Processing :: General",
+ ]
+ dependencies = [
+-  "spokenform>=0.4.5,<0.5",
++  "spokenform>=0.4.6,<0.5",
+   "phrasplit>=0.3.9,<1",
+ ]
+
+diff --git a/tests/test_packaging.py b/tests/test_packaging.py
+index bcf4477..08f0472 100644
+--- a/tests/test_packaging.py
++++ b/tests/test_packaging.py
+@@ -23,7 +23,7 @@ def test_runtime_metadata_has_no_removed_dependencies_or_console_script():
+
+     for removed in ("ssmd", "ssmdconvert", "utterplan", "pyyaml", "typer", "pyjev"):
+         assert not re.search(rf"[\"']{removed}(?:[<>=!~]|[\"'])", runtime_dependencies)
+-    assert '"spokenform>=0.4.5,<0.5"' in runtime_dependencies
++    assert '"spokenform>=0.4.6,<0.5"' in runtime_dependencies
+     assert '"phrasplit>=0.3.9,<1"' in runtime_dependencies
+     assert "[project.scripts]" not in pyproject
+     assert '"lexhint>=' in pyproject
+@@ -115,7 +115,7 @@ def test_built_wheel_version_matches_metadata_and_imported_distribution(tmp_path
+         assert metadata_version
+
+         requirements = metadata.get_all("Requires-Dist") or []
+-        assert any("spokenform" in item.lower() and ">=0.4.5" in item for item in requirements)
++        assert any("spokenform" in item.lower() and ">=0.4.6" in item for item in requirements)
+         assert any("phrasplit" in item.lower() and ">=0.3.9" in item for item in requirements)
+         assert "lexical" in (metadata.get_all("Provides-Extra") or [])
+
+diff --git a/tests/test_prepare_units.py b/tests/test_prepare_units.py
+index 290caa7..a18ed43 100644
+--- a/tests/test_prepare_units.py
++++ b/tests/test_prepare_units.py
+@@ -1,10 +1,19 @@
++from dataclasses import replace
+ from types import SimpleNamespace
+
+ import pytest
++import spokenform
+ from spokenform import TokenAnnotation
+ from spokenform.mapping import OffsetMap
+
+-from ttsready import LinguisticToken, PreparationProfile
++from ttsready import (
++    LinguisticToken,
++    OverrideScope,
++    PreparationProfile,
++    SpeechOverride,
++    apply_changes,
++    prepare_text,
++)
+ from ttsready.models import TextUnit
+ from ttsready.preparation import prepare_units
+
+@@ -107,3 +116,215 @@ def test_linguistic_hints_do_not_override_protected_source_spans():
+
+     assert prepared.units[0].spoken_text == "2 kg"
+     assert prepared.units[0].changes == ()
++
++
++def test_prepare_units_propagates_initialisms_within_and_across_units():
++    units = (
++        TextUnit("first", "Someone (ART) agreed. ART’s module opened.", "en-US"),
++        TextUnit("second", "Later ART checked it.", "en-US"),
++        TextUnit("third", "Another note mentioned ART's module.", "en-US"),
++    )
++
++    result = prepare_units(units)
++    prepared = {unit.unit_id: unit for unit in result.units}
++
++    assert prepared["first"].spoken_text == "Someone (A R T) agreed. A R T’s module opened."
++    assert prepared["second"].spoken_text == "Later A R T checked it."
++    assert prepared["third"].spoken_text == "Another note mentioned A R T's module."
++    seed = next(
++        change for change in result.changes if change.rule == "sequence.parenthesized-initialism"
++    )
++    assert (seed.source, seed.replacement) == ("ART", "A R T")
++    consistency = [change for change in result.changes if change.kind == "consistency"]
++    assert [(change.source, change.replacement) for change in consistency] == [
++        ("ART’s", "A R T’s"),
++        ("ART", "A R T"),
++        ("ART's", "A R T's"),
++    ]
++    assert all(change.stages == ("consistency",) for change in consistency)
++    assert all(change.rule == "ttsready.initialism-consistency" for change in consistency)
++    for unit in result.units:
++        assert apply_changes(unit.source_text, unit.changes) == unit.spoken_text
++        assert unit.context.spoken_text == unit.spoken_text
++        for change in unit.changes:
++            assert unit.spoken_text[change.output_start : change.output_end] == change.replacement
++        for left, right in zip(unit.changes, unit.changes[1:], strict=False):
++            assert left.source_end <= right.source_start
++        for sentence in unit.context.spoken_sentences:
++            assert unit.spoken_text[sentence.start : sentence.end] == sentence.text
++    assert result.stats.stage_edits["consistency"] == 3
++    assert result.stats.changes == len(result.changes)
++    assert not [issue for issue in result.issues if issue.code == "qa.initialism_candidate"]
++
++
++def test_seed_in_later_unit_propagates_to_earlier_occurrence():
++    units = (
++        TextUnit("early", "ART checked the result.", "en-US"),
++        TextUnit("seed", "The system called itself (ART).", "en-US"),
++    )
++
++    result = prepare_units(units)
++    early = result.units[0]
++
++    assert early.spoken_text == "A R T checked the result."
++    change = next(change for change in early.changes if change.kind == "consistency")
++    assert (change.source, change.replacement) == ("ART", "A R T")
++
++
++def test_consistency_is_exact_case_sensitive_and_respects_unicode_boundaries():
++    seed = TextUnit("seed", "They named it (ART).", "en-US")
++    text = "Art art ARTs ARTS ART-like START ART2 ΩART ARTé."
++    protected_start = text.index("ART2")
++    target = TextUnit(
++        "target",
++        text,
++        "en-US",
++        protected_spans=((protected_start, protected_start + len("ART2")),),
++    )
++
++    result = prepare_units((seed, target))
++
++    assert result.units[1].spoken_text == text
++    assert not [change for change in result.units[1].changes if change.kind == "consistency"]
++
++
++def test_no_seed_keeps_uppercase_token_conservative_in_bulk_and_isolated_apis():
++    text = "ART is a normal uppercase token here."
++
++    bulk = prepare_units((TextUnit("bulk", text, "en-US"),))
++    isolated = prepare_text(text, language="en-US")
++
++    assert bulk.units[0].spoken_text == text
++    assert not [change for change in bulk.changes if change.kind == "consistency"]
++    assert isolated.spoken_text == text
++
++
++def test_caller_override_and_protected_span_win_over_consistency():
++    text = "(ART) plus ART's and ART’s."
++    ascii_start = text.index("ART's")
++    curly_start = text.index("ART’s")
++    override = SpeechOverride(
++        surface="ART's",
++        spoken="custom pronunciation",
++        match="literal",
++        scope=OverrideScope(
++            kind="occurrence",
++            unit_id="unit",
++            source_start=ascii_start,
++            source_end=ascii_start + len("ART's"),
++        ),
++    )
++    unit = TextUnit(
++        "unit",
++        text,
++        "en-US",
++        protected_spans=((curly_start, curly_start + len("ART’s")),),
++    )
++
++    result = prepare_units((unit,), overrides=(override,))
++    prepared = result.units[0]
++
++    assert prepared.spoken_text == "(A R T) plus custom pronunciation and ART’s."
++    override_change = next(change for change in prepared.changes if change.kind == "override")
++    assert (override_change.source, override_change.replacement) == (
++        "ART's",
++        "custom pronunciation",
++    )
++    assert not any(
++        change.kind == "consistency"
++        and change.source_start < override_change.source_end
++        and override_change.source_start < change.source_end
++        for change in prepared.changes
++    )
++    assert not any(change.source == "ART’s" for change in prepared.changes)
++
++
++def test_conflicting_safe_seeds_fail_closed_deterministically(monkeypatch):
++    real_backend = spokenform.prepare_language
++
++    def conflicting_backend(text, **kwargs):
++        result = real_backend(text, **kwargs)
++        if not text.startswith("SeedB"):
++            return result
++        changes = tuple(
++            replace(change, replacement="a r t")
++            if change.rule == "sequence.parenthesized-initialism"
++            else change
++            for change in result.source_replacements
++        )
++        spoken_text = result.spoken_text
++        for change in changes:
++            if change.rule == "sequence.parenthesized-initialism":
++                spoken_text = (
++                    spoken_text[: change.output_start]
++                    + change.replacement
++                    + spoken_text[change.output_end :]
++                )
++        return SimpleNamespace(
++            spoken_text=spoken_text,
++            source_replacements=changes,
++            warnings=result.warnings,
++            offset_map=result.offset_map,
++        )
++
++    monkeypatch.setattr("ttsready.preparation.spokenform.prepare_language", conflicting_backend)
++    units = (
++        TextUnit("a-seed", "SeedA (ART).", "en-US"),
++        TextUnit("b-seed", "SeedB (ART).", "en-US"),
++        TextUnit("target", "Later ART.", "en-US"),
++    )
++
++    forward = prepare_units(units)
++    reverse = prepare_units(tuple(reversed(units)))
++    forward_by_id = {unit.unit_id: unit for unit in forward.units}
++    reverse_by_id = {unit.unit_id: unit for unit in reverse.units}
++
++    assert forward_by_id["target"].spoken_text == "Later ART."
++    assert reverse_by_id["target"].spoken_text == "Later ART."
++    assert not [change for change in forward.changes if change.kind == "consistency"]
++    forward_issue = next(
++        issue for issue in forward.issues if issue.code == "ttsready.initialism_conflict"
++    )
++    reverse_issue = next(
++        issue for issue in reverse.issues if issue.code == "ttsready.initialism_conflict"
++    )
++    assert forward_issue.message == reverse_issue.message
++    assert forward_issue.provenance == reverse_issue.provenance
++
++
++def test_initialism_seeds_do_not_cross_language_boundaries():
++    result = prepare_units(
++        (
++            TextUnit("english-seed", "The token (ART) appears.", "en-US"),
++            TextUnit("french", "ART reste inchangé.", "fr-FR"),
++        )
++    )
++
++    assert result.units[1].spoken_text == "ART reste inchangé."
++    assert not [change for change in result.units[1].changes if change.kind == "consistency"]
++
++
++def test_prepare_units_initialism_consistency_is_reproducible():
++    units = (
++        TextUnit("first", "ART checked it.", "en-US"),
++        TextUnit("seed", "Someone (ART) agreed.", "en-US"),
++    )
++
++    first = prepare_units(units)
++    second = prepare_units(units)
++
++    assert first.units == second.units
++    assert first.changes == second.changes
++    assert first.issues == second.issues
++    assert first.stats == second.stats
++    assert first.prepared_fingerprint == second.prepared_fingerprint
++
++
++def test_prepare_units_preserves_spokenform_lexical_slash_change():
++    result = prepare_units((TextUnit("slash", "open/close", "en-US"),))
++
++    assert result.units[0].spoken_text == "open slash close"
++    assert len(result.changes) == 1
++    change = result.changes[0]
++    assert (change.source, change.replacement) == ("open/close", "open slash close")
++    assert (change.source_start, change.source_end) == (0, len("open/close"))
+diff --git a/ttsready/preparation.py b/ttsready/preparation.py
+index f566717..e9324be 100644
+--- a/ttsready/preparation.py
++++ b/ttsready/preparation.py
+@@ -2,9 +2,11 @@
+
+ from __future__ import annotations
+
++import re
++import unicodedata
+ from collections import Counter
+ from collections.abc import Iterable, Mapping
+-from dataclasses import dataclass
++from dataclasses import dataclass, replace
+ from typing import Any
+
+ import phrasplit
+@@ -222,6 +224,17 @@ class _BackendPreparation:
+     source_map: SourceOutputMap
+
+
++@dataclass(frozen=True, slots=True)
++class _InitialismSeed:
++    language_key: str
++    surface: str
++    spoken: str
++    change_id: str
++    rule: str
++    unit_id: str
++    source_start: int
++
++
+ def _spokenform_annotations(
+     text: str,
+     tokens: tuple[LinguisticToken, ...],
+@@ -434,6 +447,263 @@ def _prepare_unit(
+     return _check_prepared_unit(unit, prepared, profile, strict=strict)
+
+
++_INITIALISM_SEED_RULE = "sequence.parenthesized-initialism"
++_CONSISTENCY_RULE = "ttsready.initialism-consistency"
++
++
++def _language_key(language: str) -> str:
++    return language.strip().replace("_", "-").casefold()
++
++
++def _grapheme_clusters(text: str) -> tuple[str, ...]:
++    clusters: list[str] = []
++    for character in text:
++        if clusters and unicodedata.category(character).startswith("M"):
++            clusters[-1] += character
++        else:
++            clusters.append(character)
++    return tuple(clusters)
++
++
++def _is_letter_spelling(surface: str, spoken: str) -> bool:
++    source_graphemes = _grapheme_clusters(surface)
++    spoken_parts = spoken.split()
++    if len(source_graphemes) < 2 or len(spoken_parts) != len(source_graphemes):
++        return False
++    for source_grapheme, spoken_part in zip(source_graphemes, spoken_parts, strict=True):
++        source_letter = unicodedata.normalize("NFC", source_grapheme)
++        spoken_letter = unicodedata.normalize("NFC", spoken_part)
++        if not source_letter.isalpha() or not spoken_letter.isalpha():
++            return False
++        if len(_grapheme_clusters(spoken_part)) != 1:
++            return False
++        if source_letter.casefold() != spoken_letter.casefold():
++            return False
++    return True
++
++
++def _collect_initialism_seeds(
++    units: tuple[TextUnit, ...], prepared: tuple[PreparedUnit, ...]
++) -> tuple[dict[tuple[str, str], _InitialismSeed], dict[str, tuple[PreparationIssue, ...]]]:
++    grouped: dict[tuple[str, str], list[_InitialismSeed]] = {}
++    for source_unit, prepared_unit in zip(units, prepared, strict=True):
++        for change in prepared_unit.changes:
++            if (
++                change.rule != _INITIALISM_SEED_RULE
++                or change.provenance.get("origin") != "spokenform"
++                or not _is_letter_spelling(change.source, change.replacement)
++            ):
++                continue
++            seed = _InitialismSeed(
++                language_key=_language_key(source_unit.language),
++                surface=change.source,
++                spoken=change.replacement,
++                change_id=change.id,
++                rule=_INITIALISM_SEED_RULE,
++                unit_id=source_unit.id,
++                source_start=change.source_start,
++            )
++            grouped.setdefault((seed.language_key, seed.surface), []).append(seed)
++
++    seeds: dict[tuple[str, str], _InitialismSeed] = {}
++    issues_by_unit: dict[str, list[PreparationIssue]] = {}
++    for (language_key, surface), candidates in sorted(grouped.items()):
++        pronunciations = {candidate.spoken for candidate in candidates}
++        if len(pronunciations) != 1:
++            ordered = sorted(
++                candidates,
++                key=lambda item: (item.unit_id, item.source_start, item.change_id, item.spoken),
++            )
++            issue = PreparationIssue(
++                code="ttsready.initialism_conflict",
++                severity="warning",
++                unit_id=ordered[0].unit_id,
++                source_start=None,
++                source_end=None,
++                text=None,
++                message=(
++                    f"Conflicting initialism pronunciation evidence for {surface!r} in "
++                    f"language {language_key!r}; consistency was not applied."
++                ),
++                provenance={
++                    "origin": "ttsready.consistency",
++                    "seed_rule": _INITIALISM_SEED_RULE,
++                    "seed_surface": surface,
++                    "seed_change_ids": ", ".join(sorted({item.change_id for item in candidates})),
++                },
++            )
++            issues_by_unit.setdefault(issue.unit_id, []).append(issue)
++            continue
++        seeds[(language_key, surface)] = min(
++            candidates,
++            key=lambda item: (item.change_id, item.unit_id, item.source_start),
++        )
++
++    return seeds, {
++        unit_id: tuple(sorted(items, key=lambda issue: (issue.code, issue.message)))
++        for unit_id, items in issues_by_unit.items()
++    }
++
++
++def _is_consistency_word_character(character: str) -> bool:
++    category = unicodedata.category(character)
++    return category[0] in {"L", "M", "N"} or category in {"Pc", "Pd"} or character in {"'", "’"}
++
++
++def _consistency_changes(
++    unit: TextUnit,
++    prepared: PreparedUnit,
++    seeds: Mapping[tuple[str, str], _InitialismSeed],
++) -> tuple[SpokenChange, ...]:
++    language_key = _language_key(unit.language)
++    english = language_key.split("-", 1)[0] == "en"
++    applicable = sorted(
++        (seed for (key_language, _surface), seed in seeds.items() if key_language == language_key),
++        key=lambda seed: (seed.surface, seed.spoken, seed.change_id),
++    )
++    occupied = [(change.source_start, change.source_end) for change in prepared.changes]
++    occupied.extend((span.start, span.end) for span in unit.protected_spans)
++    generated: list[SpokenChange] = []
++    for seed in applicable:
++        for match in re.finditer(re.escape(seed.surface), unit.text):
++            start, stem_end = match.span()
++            if start and _is_consistency_word_character(unit.text[start - 1]):
++                continue
++            suffix = ""
++            if english and unit.text[stem_end : stem_end + 2] in {"'s", "’s"}:
++                suffix = unit.text[stem_end : stem_end + 2]
++            end = stem_end + len(suffix)
++            if end < len(unit.text) and _is_consistency_word_character(unit.text[end]):
++                continue
++            span = (start, end)
++            if any(_overlaps(span, existing) for existing in occupied):
++                continue
++
++            source = unit.text[start:end]
++            generated.append(
++                SpokenChange(
++                    id=source_change_id(
++                        unit.id,
++                        source_start=start,
++                        source_end=end,
++                        source=source,
++                    ),
++                    unit_id=unit.id,
++                    source_start=start,
++                    source_end=end,
++                    output_start=0,
++                    output_end=len(seed.spoken + suffix),
++                    source=source,
++                    replacement=seed.spoken + suffix,
++                    stages=("consistency",),
++                    kind="consistency",
++                    rule=_CONSISTENCY_RULE,
++                    provenance={
++                        "origin": "ttsready.consistency",
++                        "seed_change_id": seed.change_id,
++                        "seed_rule": seed.rule,
++                        "seed_surface": seed.surface,
++                    },
++                    language=unit.language,
++                )
++            )
++            occupied.append(span)
++    return tuple(sorted(generated, key=lambda change: (change.source_start, change.source_end)))
++
++
++def _rebuild_consistent_unit(
++    unit: TextUnit,
++    prepared: PreparedUnit,
++    additions: tuple[SpokenChange, ...],
++    extra_issues: tuple[PreparationIssue, ...],
++    profile: PreparationProfile,
++    *,
++    strict: bool,
++) -> PreparedUnit:
++    changes = sorted(
++        (*prepared.changes, *additions),
++        key=lambda change: (change.source_start, change.source_end),
++    )
++    cursor = 0
++    output_offset = 0
++    output_parts: list[str] = []
++    rebuilt_changes: list[SpokenChange] = []
++    for change in changes:
++        if change.source_start < cursor or change.source_end > len(unit.text):
++            raise MappingError("consistency changes overlap or fall outside the source text")
++        if unit.text[change.source_start : change.source_end] != change.source:
++            raise MappingError("consistency change source does not match the input text")
++        output_parts.append(unit.text[cursor : change.source_start])
++        output_offset += change.source_start - cursor
++        output_start = output_offset
++        output_parts.append(change.replacement)
++        output_offset += len(change.replacement)
++        rebuilt_changes.append(replace(change, output_start=output_start, output_end=output_offset))
++        cursor = change.source_end
++    output_parts.append(unit.text[cursor:])
++    spoken_text = "".join(output_parts)
++    rebuilt_change_tuple = tuple(rebuilt_changes)
++    if apply_changes(unit.text, rebuilt_change_tuple) != spoken_text:
++        raise MappingError("rebuilt consistency changes do not reconstruct spoken_text")
++
++    issues = tuple(
++        issue for issue in prepared.issues if issue.provenance.get("origin") != "ttsready.qa"
++    )
++    context = UnitContext(
++        unit_id=unit.id,
++        role=unit.role,
++        language=unit.language,
++        source_text=unit.text,
++        spoken_text=spoken_text,
++        source_sentences=prepared.context.source_sentences,
++        spoken_sentences=_sentence_spans(spoken_text, unit.language),
++    )
++    rebuilt = PreparedUnit(
++        unit_id=unit.id,
++        source_text=unit.text,
++        spoken_text=spoken_text,
++        language=unit.language,
++        role=unit.role,
++        changes=rebuilt_change_tuple,
++        issues=(*issues, *extra_issues),
++        context=context,
++    )
++    from .qa import _check_prepared_unit
++
++    return _check_prepared_unit(unit, rebuilt, profile, strict=strict)
++
++
++def _apply_initialism_consistency(
++    units: tuple[TextUnit, ...],
++    first_pass: tuple[PreparedUnit, ...],
++    seeds: Mapping[tuple[str, str], _InitialismSeed],
++    issues_by_unit: Mapping[str, tuple[PreparationIssue, ...]],
++    profile: PreparationProfile,
++    *,
++    strict: bool,
++) -> tuple[PreparedUnit, ...]:
++    final: list[PreparedUnit] = []
++    for unit, prepared in zip(units, first_pass, strict=True):
++        additions = _consistency_changes(unit, prepared, seeds)
++        extra_issues = issues_by_unit.get(unit.id, ())
++        if additions:
++            final.append(
++                _rebuild_consistent_unit(
++                    unit,
++                    prepared,
++                    additions,
++                    extra_issues,
++                    profile,
++                    strict=strict,
++                )
++            )
++        elif extra_issues:
++            final.append(replace(prepared, issues=(*prepared.issues, *extra_issues)))
++        else:
++            final.append(prepared)
++    return tuple(final)
++
++
+ def apply_changes(text: str, changes: Iterable[SpokenChange]) -> str:
+     """Apply source-relative changes, rejecting stale or overlapping coordinates."""
+     ordered = tuple(sorted(changes, key=lambda item: (item.source_start, item.source_end)))
+@@ -630,6 +900,16 @@ def prepare_units(
+             ),
+         )
+     prepared = tuple(prepared_list)
++    first_pass_prepared = tuple(prepared_list)
++    seeds, conflict_issues = _collect_initialism_seeds(unit_list, first_pass_prepared)
++    prepared = _apply_initialism_consistency(
++        unit_list,
++        first_pass_prepared,
++        seeds,
++        conflict_issues,
++        effective_profile,
++        strict=strict,
++    )
+     changes = tuple(change for unit in prepared for change in unit.changes)
+     issues = tuple(issue for unit in prepared for issue in unit.issues)
+     stages = Counter(stage for change in changes for stage in change.stages)

@@ -1,0 +1,35 @@
+{
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "additions": 562,
+      "deletions": 9,
+      "patch_file": "37f8b27.patch",
+      "patch_sha256": "42a02e243043b8c25a6b1abe941ac2712fb861a0e66cb373d4e95a44be526d56",
+      "paths": [
+        ".ledger/releaseledger/data/ledgers/main/events/events.jsonl",
+        ".ledger/releaseledger/data/ledgers/main/releases/0.2.3/entries/entry-0001.md",
+        ".ledger/releaseledger/data/ledgers/main/releases/0.2.3/release.md",
+        "README.md",
+        "docs/changelog.md",
+        "docs/installation.md",
+        "docs/python-api.md",
+        "pyproject.toml",
+        "tests/test_packaging.py",
+        "tests/test_prepare_units.py",
+        "ttsready/preparation.py"
+      ],
+      "sha": "37f8b270acd547e7935744bc7c1651536791e586",
+      "short_sha": "37f8b27",
+      "source_ref": "git:37f8b270acd547e7935744bc7c1651536791e586"
+    }
+  ],
+  "git_base_ref": "2328a5831af26df5d72388ca4cd07085536f6f8e",
+  "git_base_sha": "2328a5831af26df5d72388ca4cd07085536f6f8e",
+  "git_head_ref": "37f8b270acd547e7935744bc7c1651536791e586",
+  "git_head_sha": "37f8b270acd547e7935744bc7c1651536791e586",
+  "include_merges": "nontrivial",
+  "object_type": "git_evidence_manifest",
+  "release_version": "0.2.4",
+  "schema_version": 1
+}

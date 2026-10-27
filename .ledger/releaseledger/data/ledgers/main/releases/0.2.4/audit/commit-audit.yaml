@@ -1,0 +1,57 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 3
+release_version: 0.2.4
+git_base_ref: v0.2.3
+git_base_sha: 2328a5831af26df5d72388ca4cd07085536f6f8e
+git_head_ref: HEAD
+git_head_sha: 37f8b270acd547e7935744bc7c1651536791e586
+git_range: 2328a5831af26df5d72388ca4cd07085536f6f8e..37f8b270acd547e7935744bc7c1651536791e586
+commit_count: 1
+rows:
+  - sha: 37f8b270acd547e7935744bc7c1651536791e586
+    source_ref: git:37f8b270acd547e7935744bc7c1651536791e586
+    short_sha: 37f8b27
+    changed_paths:
+      - .ledger/releaseledger/data/ledgers/main/events/events.jsonl
+      - .ledger/releaseledger/data/ledgers/main/releases/0.2.3/entries/entry-0001.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.2.3/release.md
+      - README.md
+      - docs/changelog.md
+      - docs/installation.md
+      - docs/python-api.md
+      - pyproject.toml
+      - tests/test_packaging.py
+      - tests/test_prepare_units.py
+      - ttsready/preparation.py
+    stats:
+      files_changed: 11
+      insertions: 562
+      deletions: 9
+    inspected: true
+    inspected_paths:
+      - README.md
+      - docs/changelog.md
+      - docs/installation.md
+      - docs/python-api.md
+      - pyproject.toml
+      - tests/test_packaging.py
+      - tests/test_prepare_units.py
+      - ttsready/preparation.py
+    observed_behavior:
+      prepare_units now propagates high-confidence parenthesized initialism
+      pronunciations across same-language units, including possessives, while remaining
+      exact and case-sensitive and respecting protected spans, caller overrides, language
+      boundaries, and conflicting-seed fail-closed behavior. Packaging metadata, documentation,
+      and regression coverage were updated for the behavior and the spokenform 0.4.6
+      minimum.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: preparation for consistency added"
+    target_entry_id: entry-0001
+    notes:
+      Reviewed the implementation, public documentation, packaging metadata, and
+      regression tests.

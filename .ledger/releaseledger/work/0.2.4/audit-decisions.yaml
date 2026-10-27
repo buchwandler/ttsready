@@ -1,0 +1,19 @@
+rows:
+  - sha: 37f8b270acd547e7935744bc7c1651536791e586
+    inspected: true
+    inspected_paths:
+      - README.md
+      - docs/changelog.md
+      - docs/installation.md
+      - docs/python-api.md
+      - pyproject.toml
+      - tests/test_packaging.py
+      - tests/test_prepare_units.py
+      - ttsready/preparation.py
+    observed_behavior: "prepare_units now propagates high-confidence parenthesized initialism pronunciations across same-language units, including possessives, while remaining exact and case-sensitive and respecting protected spans, caller overrides, language boundaries, and conflicting-seed fail-closed behavior. Packaging metadata, documentation, and regression coverage were updated for the behavior and the spokenform 0.4.6 minimum."
+    public_impact: public
+    decision: accepted
+    target_entry_key: null
+    target_entry_id: null
+    notes: "Reviewed the implementation, public documentation, packaging metadata, and regression tests."
+    stale: false

@@ -1,0 +1,32 @@
+schema: releaseledger.entry-batch.v1
+operation: create
+schema_version: 1
+object_type: release_entry_batch
+release_version: 0.2.4
+git_base_ref: 2328a5831af26df5d72388ca4cd07085536f6f8e
+git_base_sha: 2328a5831af26df5d72388ca4cd07085536f6f8e
+git_head_ref: 37f8b270acd547e7935744bc7c1651536791e586
+git_head_sha: 37f8b270acd547e7935744bc7c1651536791e586
+include_merges: nontrivial
+entries:
+  - kind: added
+    summary: Added preparation-set consistency for high-confidence initialism pronunciations
+    status: accepted
+    source_refs:
+      - git:37f8b270acd547e7935744bc7c1651536791e586
+      - tl:task-0013
+    paths:
+      - README.md
+      - docs/changelog.md
+      - docs/installation.md
+      - docs/python-api.md
+      - pyproject.toml
+      - tests/test_packaging.py
+      - tests/test_prepare_units.py
+      - ttsready/preparation.py
+    sources:
+      - git:37f8b270acd547e7935744bc7c1651536791e586
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"
