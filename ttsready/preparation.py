@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from collections import Counter
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import phrasplit
@@ -222,6 +224,17 @@ class _BackendPreparation:
     source_map: SourceOutputMap
 
 
+@dataclass(frozen=True, slots=True)
+class _InitialismSeed:
+    language_key: str
+    surface: str
+    spoken: str
+    change_id: str
+    rule: str
+    unit_id: str
+    source_start: int
+
+
 def _spokenform_annotations(
     text: str,
     tokens: tuple[LinguisticToken, ...],
@@ -434,6 +447,263 @@ def _prepare_unit(
     return _check_prepared_unit(unit, prepared, profile, strict=strict)
 
 
+_INITIALISM_SEED_RULE = "sequence.parenthesized-initialism"
+_CONSISTENCY_RULE = "ttsready.initialism-consistency"
+
+
+def _language_key(language: str) -> str:
+    return language.strip().replace("_", "-").casefold()
+
+
+def _grapheme_clusters(text: str) -> tuple[str, ...]:
+    clusters: list[str] = []
+    for character in text:
+        if clusters and unicodedata.category(character).startswith("M"):
+            clusters[-1] += character
+        else:
+            clusters.append(character)
+    return tuple(clusters)
+
+
+def _is_letter_spelling(surface: str, spoken: str) -> bool:
+    source_graphemes = _grapheme_clusters(surface)
+    spoken_parts = spoken.split()
+    if len(source_graphemes) < 2 or len(spoken_parts) != len(source_graphemes):
+        return False
+    for source_grapheme, spoken_part in zip(source_graphemes, spoken_parts, strict=True):
+        source_letter = unicodedata.normalize("NFC", source_grapheme)
+        spoken_letter = unicodedata.normalize("NFC", spoken_part)
+        if not source_letter.isalpha() or not spoken_letter.isalpha():
+            return False
+        if len(_grapheme_clusters(spoken_part)) != 1:
+            return False
+        if source_letter.casefold() != spoken_letter.casefold():
+            return False
+    return True
+
+
+def _collect_initialism_seeds(
+    units: tuple[TextUnit, ...], prepared: tuple[PreparedUnit, ...]
+) -> tuple[dict[tuple[str, str], _InitialismSeed], dict[str, tuple[PreparationIssue, ...]]]:
+    grouped: dict[tuple[str, str], list[_InitialismSeed]] = {}
+    for source_unit, prepared_unit in zip(units, prepared, strict=True):
+        for change in prepared_unit.changes:
+            if (
+                change.rule != _INITIALISM_SEED_RULE
+                or change.provenance.get("origin") != "spokenform"
+                or not _is_letter_spelling(change.source, change.replacement)
+            ):
+                continue
+            seed = _InitialismSeed(
+                language_key=_language_key(source_unit.language),
+                surface=change.source,
+                spoken=change.replacement,
+                change_id=change.id,
+                rule=_INITIALISM_SEED_RULE,
+                unit_id=source_unit.id,
+                source_start=change.source_start,
+            )
+            grouped.setdefault((seed.language_key, seed.surface), []).append(seed)
+
+    seeds: dict[tuple[str, str], _InitialismSeed] = {}
+    issues_by_unit: dict[str, list[PreparationIssue]] = {}
+    for (language_key, surface), candidates in sorted(grouped.items()):
+        pronunciations = {candidate.spoken for candidate in candidates}
+        if len(pronunciations) != 1:
+            ordered = sorted(
+                candidates,
+                key=lambda item: (item.unit_id, item.source_start, item.change_id, item.spoken),
+            )
+            issue = PreparationIssue(
+                code="ttsready.initialism_conflict",
+                severity="warning",
+                unit_id=ordered[0].unit_id,
+                source_start=None,
+                source_end=None,
+                text=None,
+                message=(
+                    f"Conflicting initialism pronunciation evidence for {surface!r} in "
+                    f"language {language_key!r}; consistency was not applied."
+                ),
+                provenance={
+                    "origin": "ttsready.consistency",
+                    "seed_rule": _INITIALISM_SEED_RULE,
+                    "seed_surface": surface,
+                    "seed_change_ids": ", ".join(sorted({item.change_id for item in candidates})),
+                },
+            )
+            issues_by_unit.setdefault(issue.unit_id, []).append(issue)
+            continue
+        seeds[(language_key, surface)] = min(
+            candidates,
+            key=lambda item: (item.change_id, item.unit_id, item.source_start),
+        )
+
+    return seeds, {
+        unit_id: tuple(sorted(items, key=lambda issue: (issue.code, issue.message)))
+        for unit_id, items in issues_by_unit.items()
+    }
+
+
+def _is_consistency_word_character(character: str) -> bool:
+    category = unicodedata.category(character)
+    return category[0] in {"L", "M", "N"} or category in {"Pc", "Pd"} or character in {"'", "’"}
+
+
+def _consistency_changes(
+    unit: TextUnit,
+    prepared: PreparedUnit,
+    seeds: Mapping[tuple[str, str], _InitialismSeed],
+) -> tuple[SpokenChange, ...]:
+    language_key = _language_key(unit.language)
+    english = language_key.split("-", 1)[0] == "en"
+    applicable = sorted(
+        (seed for (key_language, _surface), seed in seeds.items() if key_language == language_key),
+        key=lambda seed: (seed.surface, seed.spoken, seed.change_id),
+    )
+    occupied = [(change.source_start, change.source_end) for change in prepared.changes]
+    occupied.extend((span.start, span.end) for span in unit.protected_spans)
+    generated: list[SpokenChange] = []
+    for seed in applicable:
+        for match in re.finditer(re.escape(seed.surface), unit.text):
+            start, stem_end = match.span()
+            if start and _is_consistency_word_character(unit.text[start - 1]):
+                continue
+            suffix = ""
+            if english and unit.text[stem_end : stem_end + 2] in {"'s", "’s"}:
+                suffix = unit.text[stem_end : stem_end + 2]
+            end = stem_end + len(suffix)
+            if end < len(unit.text) and _is_consistency_word_character(unit.text[end]):
+                continue
+            span = (start, end)
+            if any(_overlaps(span, existing) for existing in occupied):
+                continue
+
+            source = unit.text[start:end]
+            generated.append(
+                SpokenChange(
+                    id=source_change_id(
+                        unit.id,
+                        source_start=start,
+                        source_end=end,
+                        source=source,
+                    ),
+                    unit_id=unit.id,
+                    source_start=start,
+                    source_end=end,
+                    output_start=0,
+                    output_end=len(seed.spoken + suffix),
+                    source=source,
+                    replacement=seed.spoken + suffix,
+                    stages=("consistency",),
+                    kind="consistency",
+                    rule=_CONSISTENCY_RULE,
+                    provenance={
+                        "origin": "ttsready.consistency",
+                        "seed_change_id": seed.change_id,
+                        "seed_rule": seed.rule,
+                        "seed_surface": seed.surface,
+                    },
+                    language=unit.language,
+                )
+            )
+            occupied.append(span)
+    return tuple(sorted(generated, key=lambda change: (change.source_start, change.source_end)))
+
+
+def _rebuild_consistent_unit(
+    unit: TextUnit,
+    prepared: PreparedUnit,
+    additions: tuple[SpokenChange, ...],
+    extra_issues: tuple[PreparationIssue, ...],
+    profile: PreparationProfile,
+    *,
+    strict: bool,
+) -> PreparedUnit:
+    changes = sorted(
+        (*prepared.changes, *additions),
+        key=lambda change: (change.source_start, change.source_end),
+    )
+    cursor = 0
+    output_offset = 0
+    output_parts: list[str] = []
+    rebuilt_changes: list[SpokenChange] = []
+    for change in changes:
+        if change.source_start < cursor or change.source_end > len(unit.text):
+            raise MappingError("consistency changes overlap or fall outside the source text")
+        if unit.text[change.source_start : change.source_end] != change.source:
+            raise MappingError("consistency change source does not match the input text")
+        output_parts.append(unit.text[cursor : change.source_start])
+        output_offset += change.source_start - cursor
+        output_start = output_offset
+        output_parts.append(change.replacement)
+        output_offset += len(change.replacement)
+        rebuilt_changes.append(replace(change, output_start=output_start, output_end=output_offset))
+        cursor = change.source_end
+    output_parts.append(unit.text[cursor:])
+    spoken_text = "".join(output_parts)
+    rebuilt_change_tuple = tuple(rebuilt_changes)
+    if apply_changes(unit.text, rebuilt_change_tuple) != spoken_text:
+        raise MappingError("rebuilt consistency changes do not reconstruct spoken_text")
+
+    issues = tuple(
+        issue for issue in prepared.issues if issue.provenance.get("origin") != "ttsready.qa"
+    )
+    context = UnitContext(
+        unit_id=unit.id,
+        role=unit.role,
+        language=unit.language,
+        source_text=unit.text,
+        spoken_text=spoken_text,
+        source_sentences=prepared.context.source_sentences,
+        spoken_sentences=_sentence_spans(spoken_text, unit.language),
+    )
+    rebuilt = PreparedUnit(
+        unit_id=unit.id,
+        source_text=unit.text,
+        spoken_text=spoken_text,
+        language=unit.language,
+        role=unit.role,
+        changes=rebuilt_change_tuple,
+        issues=(*issues, *extra_issues),
+        context=context,
+    )
+    from .qa import _check_prepared_unit
+
+    return _check_prepared_unit(unit, rebuilt, profile, strict=strict)
+
+
+def _apply_initialism_consistency(
+    units: tuple[TextUnit, ...],
+    first_pass: tuple[PreparedUnit, ...],
+    seeds: Mapping[tuple[str, str], _InitialismSeed],
+    issues_by_unit: Mapping[str, tuple[PreparationIssue, ...]],
+    profile: PreparationProfile,
+    *,
+    strict: bool,
+) -> tuple[PreparedUnit, ...]:
+    final: list[PreparedUnit] = []
+    for unit, prepared in zip(units, first_pass, strict=True):
+        additions = _consistency_changes(unit, prepared, seeds)
+        extra_issues = issues_by_unit.get(unit.id, ())
+        if additions:
+            final.append(
+                _rebuild_consistent_unit(
+                    unit,
+                    prepared,
+                    additions,
+                    extra_issues,
+                    profile,
+                    strict=strict,
+                )
+            )
+        elif extra_issues:
+            final.append(replace(prepared, issues=(*prepared.issues, *extra_issues)))
+        else:
+            final.append(prepared)
+    return tuple(final)
+
+
 def apply_changes(text: str, changes: Iterable[SpokenChange]) -> str:
     """Apply source-relative changes, rejecting stale or overlapping coordinates."""
     ordered = tuple(sorted(changes, key=lambda item: (item.source_start, item.source_end)))
@@ -630,6 +900,16 @@ def prepare_units(
             ),
         )
     prepared = tuple(prepared_list)
+    first_pass_prepared = tuple(prepared_list)
+    seeds, conflict_issues = _collect_initialism_seeds(unit_list, first_pass_prepared)
+    prepared = _apply_initialism_consistency(
+        unit_list,
+        first_pass_prepared,
+        seeds,
+        conflict_issues,
+        effective_profile,
+        strict=strict,
+    )
     changes = tuple(change for unit in prepared for change in unit.changes)
     issues = tuple(issue for unit in prepared for issue in unit.issues)
     stages = Counter(stage for change in changes for stage in change.stages)

@@ -12,7 +12,7 @@ Python 3.10 or newer is required.
 python -m pip install ttsready
 ```
 
-The runtime dependencies are `spokenform>=0.4.5,<0.5` and `phrasplit>=0.3.9,<1`. Install the optional lexical extra when you need its lexical-evidence integrations:
+The runtime dependencies are `spokenform>=0.4.6,<0.5` and `phrasplit>=0.3.9,<1`. Install the optional lexical extra when you need its lexical-evidence integrations:
 
 ```bash
 python -m pip install 'ttsready[lexical]'
@@ -35,6 +35,8 @@ for change in prepared.changes:
 ```
 
 `prepare_text()` prepares one unit and returns a `PreparedUnit`. Use `prepare_units()` when you have multiple caller-owned units, possibly with different languages, roles, protected spans, or metadata. See [docs/quickstart.md](docs/quickstart.md) and the runnable [API example](examples/basic_prepare.py).
+
+`prepare_units()` can carry a high-confidence initialism pronunciation established in one unit to exact occurrences in the same preparation set; isolated `prepare_text()` remains conservative. See [Python API](docs/python-api.md#preparation-set-initialism-consistency).
 
 ## Lexical review
 

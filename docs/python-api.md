@@ -91,6 +91,25 @@ result.prepared_fingerprint  # digest of ordered prepared outputs
 
 Unit IDs must be unique within one result. A unit's language is passed explicitly to `spokenform`; it is not inferred from a document. The caller controls the ID namespace and preserves any format-specific structure outside this library.
 
+### Preparation-set initialism consistency
+
+Spokenform owns linguistic recognition: a high-confidence parenthesized initialism such as `(ART)` can establish `ART -> A R T`. TTSReady applies a separate, conservative consistency pass in `prepare_units()` so exact, case-sensitive occurrences of that source stem remain consistent across same-language units, including possessives:
+
+```python
+from ttsready import TextUnit, prepare_units
+
+result = prepare_units(
+    (
+        TextUnit("first", "(ART) was announced. ART’s module was ready.", "en-US"),
+        TextUnit("later", "Later ART checked it.", "en-US"),
+    )
+)
+[unit.spoken_text for unit in result.units]
+# ['(A R T) was announced. A R T’s module was ready.', 'Later A R T checked it.']
+```
+
+This is preparation-set consistency, not generic acronym detection. `prepare_text("ART is here", language="en-US")` remains conservative because it has no other unit or contextual seed to propagate. Explicit overrides, protected spans, and existing backend changes take precedence.
+
 `TextUnit.linguistic_tokens` accepts source-relative `LinguisticToken` hints. It normalizes them by `(start, end)` and validates bounds, non-overlap, token text, and provider-neutral type. `prepare_units()` and `prepare_text()` forward supplied hints to Spokenform without asking TTSReady to load an NLP provider. Units without hints keep the original behavior and fingerprint.
 
 `prepare_units(..., on_progress=callback)` optionally reports synchronous `PreparationProgressEvent` values (`unit.started` and `unit.completed`) with completed/total counts and unit ID, language, and role. Events are observational, are not serialized, and callback exceptions propagate. TTSReady does not print or render progress.
